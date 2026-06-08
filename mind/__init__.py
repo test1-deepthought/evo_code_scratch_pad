@@ -1,1 +1,1 @@
-# mind package - Shared KB Protocol
+# intentionally empty - package removed
