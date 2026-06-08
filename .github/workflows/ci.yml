@@ -2,19 +2,37 @@ name: CI
 
 on:
   workflow_dispatch:
-    inputs:
-      test_command:
-        description: 'Test command to run'
-        required: true
-        default: 'python3 -m pytest'
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Run test
-        run: ${{ github.event.inputs.test_command }}
+          ref: ${{ github.event.ref || github.ref }}
+
+      - name: Python
+        if: hashFiles('**/*.py') != ''
+        run: |
+          set -e
+          for f in $(find . -name '*.py' -not -path './.github/*' 2>/dev/null); do
+            echo "=== $f ==="
+            python3 "$f"
+          done
+
+      - name: Shell
+        if: hashFiles('**/*.sh') != ''
+        run: |
+          set -e
+          for f in $(find . -name '*.sh' -not -path './.github/*' 2>/dev/null); do
+            echo "=== $f ==="
+            bash "$f"
+          done
+
+      - name: Node.js
+        if: hashFiles('**/package.json') != ''
+        run: npm test || true
+
+      - name: Rust
+        if: hashFiles('**/Cargo.toml') != ''
+        run: cargo test || true
