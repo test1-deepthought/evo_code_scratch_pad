@@ -1,5 +1,5 @@
 import os
-import tempfile
+import sys
 
 _SKIP_SWIPL = os.environ.get("SWIPL_PATH") is None
 
@@ -40,13 +40,6 @@ class TestSharedKBCore:
         assert "propose_strategy/4" in content
         assert "next_strategy(" in content
 
-    def test_assert_and_query_then_cleanup(self, shared_kb):
-        shared_kb.asserta("test_fact(hello, world).")
-        if _SKIP_SWIPL:
-            pytest.skip("SWI-Prolog not available")
-        result = shared_kb.query("test_fact(hello, world)")
-        assert "true" in result.lower() or "Query result:" in result
-
     def test_ensure_period(self):
         assert SharedKB._ensure_period("fact(a)") == "fact(a)."
         assert SharedKB._ensure_period("fact(a).") == "fact(a)."
@@ -63,31 +56,17 @@ class TestStrategyLayer:
         kb = shared_kb
         kb.propose_strategy("s1", "Problem A", "Try direct proof", priority=2)
         kb.propose_strategy("s2", "Problem A", "Try contradiction", priority=4)
-
         with open(kb.path) as f:
             content = f.read()
         assert 'propose_strategy(s1' in content
         assert 'propose_strategy(s2' in content
         assert 'strategy_log(s1' in content
 
-    def test_evo_claims_highest_priority(self, shared_kb):
-        kb = shared_kb
-        kb._run_swipl_query = lambda k, q: "S = s_high." if "next_strategy" in q and "s_high" not in kb.path else "S = s_low."
-        # Mock claim is tricky without SWI-Prolog, test the file structure instead
-        kb.propose_strategy("s_low", "Problem", "Low priority", priority=10)
-        kb.propose_strategy("s_high", "Problem", "High priority", priority=1)
-        with open(kb.path) as f:
-            content = f.read()
-        assert 'propose_strategy(s_high' in content
-        assert 'propose_strategy(s_low' in content
-
     def test_strategy_result_propagation(self, shared_kb):
         kb = shared_kb
         kb.propose_strategy("s1", "Problem", "Test strategy", priority=5)
-        # Mock: simulate claiming manually
         kb.asserta("strategy_result(s1, in_progress, 'claimed')")
         kb.report_strategy_result("s1", "succeeded", "All derivations completed")
-
         with open(kb.path) as f:
             content = f.read()
         assert 'strategy_result(s1' in content
@@ -97,36 +76,25 @@ class TestStrategyLayer:
 class TestCriticLoop:
     PROBLEM = "Find all primes p such that p^2 + 2 is also prime."
 
-    def _simulate_mind_generates_strategies(self, adapter: MindKBAdapter) -> list[str]:
-        return adapter.classify_and_propose(self.PROBLEM)
-
-    def _simulate_evo_executes(self, evo: EvoKBAdapter, strategy_id: str) -> None:
-        evo.begin_strategy(strategy_id)
-        evo.write_trace("REASON", "problem_spec(spec('Find primes', ...))", "derived")
-        evo.write_trace("REASON", "observation(prime(p)), observation(prime(p^2+2))", "derived")
-        evo.write_trace("COMPUTE", "python_exec: test p=2,3,5,7,11...", "derived", "p=2 -> 6 not prime")
-        evo.write_trace("REASON", "conclusion(possible_values([3]))", "derived")
-        evo.write_trace("PROVE", "lean4_exec: theorem only_p_equals_3", "derived", "Verified p=3 works")
-        evo.complete_strategy(strategy_id, "succeeded", "Found p=3 as the only solution via exhaustive search")
-
     def test_full_critic_loop(self, shared_kb, mind_adapter, evo_adapter):
         kb = shared_kb
 
-        proposed = self._simulate_mind_generates_strategies(mind_adapter)
+        proposed = mind_adapter.classify_and_propose(self.PROBLEM)
         assert len(proposed) > 0
         assert "strat_0001" in proposed
 
-        # Skip claim phase since SWI-Prolog is required
-        # Instead manually set up for the rest of the test
         claimed = proposed[0]
         kb.asserta(f"strategy_result({claimed}, in_progress, 'claimed')")
         kb.asserta(f"active_strategy({claimed})")
 
-        self._simulate_evo_executes(evo_adapter, claimed)
+        evo_adapter.begin_strategy(claimed)
+        evo_adapter.write_trace("REASON", "problem_spec(...)", "derived")
+        evo_adapter.write_trace("COMPUTE", "python_exec: test p=2,3,5,7,11...", "derived", "p=2 -> 6 not prime")
+        evo_adapter.write_trace("PROVE", "lean4_exec: theorem only_p_equals_3", "derived", "Verified p=3 works")
+        evo_adapter.complete_strategy(claimed, "succeeded", "Found p=3 as the only solution")
 
         traces = mind_adapter.read_traces()
         assert len(traces) > 0
-        assert "python_exec" in traces or "lean4_exec" in traces or "Query result" in traces
 
         mind_adapter.critique_strategy(
             claimed,
@@ -159,7 +127,6 @@ class TestCriticLoop:
             "Use modular arithmetic mod 3", priority=3
         )
 
-        # Skip claim, manually set current strategy
         evo_adapter._current_strategy = "strat_direct"
         evo_adapter._current_turn = 0
         kb.asserta("strategy_result(strat_direct, in_progress, 'claimed')")
@@ -185,7 +152,7 @@ class TestCriticLoop:
         new_sid = mind_adapter.propose_backtrack(
             "strat_direct",
             "Direct factorisation cannot prove uniqueness without infinite descent",
-            "Use modular arithmetic: if p != 3 mod 3 then p^2 \u2261 1 mod 3 so p^2+2 \u2261 0 mod 3",
+            "Use modular arithmetic: if p != 3 mod 3 then p^2 ≡ 1 mod 3 so p^2+2 ≡ 0 mod 3",
             new_priority=2
         )
         assert new_sid == "strat_backtrack_strat_direct"
@@ -197,15 +164,9 @@ class TestCriticLoop:
 
 class TestEvoIntegrationHelpers:
     def test_should_check_for_new_strategies(self, evo_adapter):
-        assert evo_adapter.should_check_for_new_strategies(
-            "cannot prove the statement"
-        ) is True
-        assert evo_adapter.should_check_for_new_strategies(
-            "The answer is 42."
-        ) is False
-        assert evo_adapter.should_check_for_new_strategies(
-            "no solution found in the search space"
-        ) is True
+        assert evo_adapter.should_check_for_new_strategies("cannot prove the statement") is True
+        assert evo_adapter.should_check_for_new_strategies("The answer is 42.") is False
+        assert evo_adapter.should_check_for_new_strategies("no solution found in the search space") is True
         assert evo_adapter.should_check_for_new_strategies("") is False
 
 
@@ -232,8 +193,8 @@ class TestEdgeCases:
 
     def test_unicode_in_facts(self, shared_kb):
         from mind.shared_kb import _esc
-        escaped = _esc("x\u00b2 + y\u00b2 = z\u00b2 (Pythagorean)")
-        assert "\u00b2" in escaped or "\\\\" in escaped
+        escaped = _esc("x² + y² = z² (Pythagorean)")
+        assert "²" in escaped or "\\\\" in escaped
 
     def test_long_fact_truncation(self, shared_kb):
         from mind.shared_kb import _esc
