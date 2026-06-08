@@ -10,9 +10,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run tests with proper Python path
-        run: |
-          pip install pytest
-          python -m pytest tests/test_shared_kb.py -v
-        env:
-          PYTHONPATH: ${{ github.workspace }}
+      - name: Install dependencies
+        run: pip install pytest
+      - name: Run tests
+        run: python -m pytest tests/ -v
