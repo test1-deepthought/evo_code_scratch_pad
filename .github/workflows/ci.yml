@@ -25,6 +25,14 @@ jobs:
             echo "=== $f ===" && bash "$f" || exit 1
           done
 
+
+      - name: PowerShell
+        if: hashFiles('**/*.ps1') != ''
+        run: |
+          for f in $(find . -name '*.ps1' -not -path './.github/*' 2>/dev/null); do
+            echo "=== $f ===" && pwsh -File "$f" || exit 1
+          done
+
       - name: Node.js
         if: hashFiles('**/package.json') != ''
         run: |
