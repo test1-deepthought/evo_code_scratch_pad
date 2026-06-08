@@ -1,1 +1,1 @@
-# mind package
+# mind package - Shared KB Protocol
