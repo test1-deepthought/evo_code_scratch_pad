@@ -112,7 +112,7 @@ def test_backtrack():
         kb.asserta("strategy_result(strat_direct, in_progress, 'claimed')")
         e.write_trace("REASON", "direct_factorization_impossible", "failed", "No algebraic factorization found")
         m.critique_strategy("strat_direct", gap="Cannot prove uniqueness", severity="high", suggestion="Switch to modular")
-        assert e.has_open_critique("strat_direct"), "should detect open high-severity critique"
+        assert e.has_open_critique("strat_direct")
         e.backtrack("strat_direct", "high-severity critique received")
         with open(kb.path) as f: c = f.read()
         assert "needs_critique" in c
