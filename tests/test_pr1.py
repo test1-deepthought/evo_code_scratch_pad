@@ -6,10 +6,18 @@ Works both with pytest (pip install pytest) and standalone.
 import os
 import sys
 
-# Import the module under test
+# Ensure repo root is on sys.path so pr1_mind is importable
+# When running: python3 tests/test_pr1.py, Python adds tests/ to path, not repo root
+_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
 from pr1_mind.shared_kb import SharedKB, _esc
 from pr1_mind.mind_kb_adapter import MindKBAdapter
 from pr1_mind.evo_kb_adapter import EvoKBAdapter
+
+
+PROBLEM = "Find all primes p such that p^2 + 2 is also prime."
 
 
 def _cleanup(kb):
@@ -23,47 +31,6 @@ def _cleanup(kb):
 def _make_kb():
     tag = f"test_{os.urandom(4).hex()}"
     return SharedKB(storage_tag=tag)
-
-
-# ===== Fixtures (reusable for both pytest and standalone) =====
-class Fixtures:
-    @staticmethod
-    def kb():
-        k = _make_kb()
-        return k
-
-    @staticmethod
-    def mind(kb):
-        return MindKBAdapter(kb)
-
-    @staticmethod
-    def evo(kb):
-        return EvoKBAdapter(kb)
-
-
-# Try to use pytest if available
-try:
-    import pytest
-
-    @pytest.fixture
-    def kb():
-        k = _make_kb()
-        yield k
-        _cleanup(k)
-
-    @pytest.fixture
-    def mind(kb):
-        return MindKBAdapter(kb)
-
-    @pytest.fixture
-    def evo(kb):
-        return EvoKBAdapter(kb)
-
-except ImportError:
-    pytest = None
-
-
-PROBLEM = "Find all primes p such that p^2 + 2 is also prime."
 
 
 def run_all_tests():
