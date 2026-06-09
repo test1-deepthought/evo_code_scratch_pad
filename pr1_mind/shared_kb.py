@@ -28,6 +28,14 @@ def _esc(s: str) -> str:
     return f"'{s}'"
 
 
+def _unquote(s: str) -> str:
+    """Remove surrounding single or double quotes from a string."""
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        return s[1:-1]
+    return s
+
+
 class SharedKB:
     def __init__(self, storage_tag: str = "shared"):
         self._kb_path = os.path.join(tempfile.gettempdir(), f"evo_shared_kb_{storage_tag}.pl")
@@ -175,12 +183,12 @@ class SharedKB:
                 depth -= 1
                 current += ch
             elif ch == "," and depth == 0 and not in_quote:
-                args.append(current.strip())
+                args.append(_unquote(current.strip()))
                 current = ""
             else:
                 current += ch
         if current.strip():
-            args.append(current.strip())
+            args.append(_unquote(current.strip()))
         return args
 
     def _fact_exists(self, predicate: str, arg0: str) -> bool:
