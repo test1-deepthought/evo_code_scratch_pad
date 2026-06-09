@@ -1,4 +1,4 @@
-"""PR #1 Tests - MINIMAL"""
+"""PR #1 Tests - Shared KB Protocol (Pattern D) - MINIMAL 5-STEP"""
 import os, sys
 _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _repo_root not in sys.path:
