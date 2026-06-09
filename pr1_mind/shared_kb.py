@@ -27,14 +27,11 @@ def _esc(s: str) -> str:
         s = s[:500] + "..."
     return f"'{s}'"
 
-
 def _unquote(s: str) -> str:
-    """Remove surrounding single or double quotes from a string."""
     s = s.strip()
     if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
         return s[1:-1]
     return s
-
 
 class SharedKB:
     def __init__(self, storage_tag: str = "shared"):
