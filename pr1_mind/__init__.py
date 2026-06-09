@@ -1,0 +1,1 @@
+# pr1_mind package - Shared KB Protocol (Pattern D)
