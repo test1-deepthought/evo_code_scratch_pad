@@ -13,5 +13,21 @@ jobs:
       - name: Debug Python env
         run: |
           python3 --version
-          python3 -c "import tempfile; print('tempdir:', tempfile.gettempdir())"
-          python3 -c "import os; print('/tmp writable:', os.access('/tmp', os.W_OK))"
+          pwd
+          ls -la
+          ls -la pr1_mind/ 2>/dev/null || echo "no pr1_mind"
+          ls -la tests/ 2>/dev/null || echo "no tests"
+      - name: Test imports
+        run: |
+          python3 -c "
+import sys
+sys.path.insert(0, '.')
+from pr1_mind.shared_kb import SharedKB, _esc
+print('pr1_mind.shared_kb: OK')
+from pr1_mind.mind_kb_adapter import MindKBAdapter
+print('pr1_mind.mind_kb_adapter: OK')
+from pr1_mind.evo_kb_adapter import EvoKBAdapter
+print('pr1_mind.evo_kb_adapter: OK')
+"
+      - name: Run test_pr1.py
+        run: python3 tests/test_pr1.py
