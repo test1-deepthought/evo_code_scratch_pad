@@ -3,18 +3,17 @@ name: CI
 on:
   workflow_dispatch:
 
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.ref || github.ref }}
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Check Python
-        run: python3 --version
-      - name: Run PR #1 tests
+      - name: Run tests
         run: python3 tests/test_pr1.py
