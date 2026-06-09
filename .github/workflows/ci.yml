@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug output'
+        required: false
+        default: 'false'
 
 jobs:
   test:
@@ -9,10 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.ref || github.ref }}
+          ref: ${{ github.event.ref || github.ref_name || github.ref }}
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Debug info
+        run: |
+          echo "Ref: ${{ github.event.ref || github.ref_name || github.ref }}"
+          echo "Python: $(python3 --version)"
+          pwd
+          ls -la
+          ls -la pr1_mind/ 2>/dev/null || echo "pr1_mind/ not found"
       - name: Run PR #1 tests
         run: python3 tests/test_pr1.py
