@@ -10,24 +10,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.ref || github.ref }}
-      - name: Debug Python env
-        run: |
-          python3 --version
-          pwd
-          ls -la
-          ls -la pr1_mind/ 2>/dev/null || echo "no pr1_mind"
-          ls -la tests/ 2>/dev/null || echo "no tests"
-      - name: Test imports
-        run: |
-          python3 -c "
-import sys
-sys.path.insert(0, '.')
-from pr1_mind.shared_kb import SharedKB, _esc
-print('pr1_mind.shared_kb: OK')
-from pr1_mind.mind_kb_adapter import MindKBAdapter
-print('pr1_mind.mind_kb_adapter: OK')
-from pr1_mind.evo_kb_adapter import EvoKBAdapter
-print('pr1_mind.evo_kb_adapter: OK')
-"
-      - name: Run test_pr1.py
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Python
+        run: python3 --version
+      - name: Run PR #1 tests
         run: python3 tests/test_pr1.py
