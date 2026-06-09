@@ -196,14 +196,12 @@ class SharedKB:
 
     def _run_query(self, kb_content: str, query_str: str) -> str:
         q = query_str.strip()
-
         if q.startswith("has_open_critique("):
             sid = q[len("has_open_critique("):-1].strip().strip("'\"")
             for f in self._parse_facts("critique_gap"):
                 if f["args"][0] == sid and f["args"][2] in ("high", "medium"):
                     return f"Query: {q}\ntrue"
             return f"Query: {q}\nfalse"
-
         if q.startswith("pending_critiques("):
             sid = q[len("pending_critiques("):q.index(",")].strip().strip("'\"")
             result = [f"Query: {q}"]
@@ -213,7 +211,6 @@ class SharedKB:
             if len(result) == 1:
                 result.append("(no critiques)")
             return "\n".join(result)
-
         if q.startswith("next_strategy("):
             results = []
             for p in self._parse_facts("propose_strategy"):
@@ -225,7 +222,6 @@ class SharedKB:
             if results:
                 return f"Query: {q}\nS = '{results[0][1]}'"
             return f"Query: {q}\nfalse"
-
         if q.startswith("traces_for_turn("):
             turn = q[len("traces_for_turn("):q.index(",")].strip()
             result = [f"Query: {q}"]
@@ -235,7 +231,6 @@ class SharedKB:
             if len(result) == 1:
                 result.append("(no traces)")
             return "\n".join(result)
-
         if q.startswith("findall("):
             import re
             m = re.search(r'trace\(T,\s*L,\s*G,\s*S,\s*D\)', q)
@@ -246,14 +241,5 @@ class SharedKB:
                 if len(result) == 1:
                     result.append("(no traces)")
                 return "\n".join(result)
-            m = re.search(r'critique_gap\(S,\s*G,\s*Sev,\s*Sug\)', q)
-            if m:
-                result = [f"Query: {q}"]
-                for f in self._parse_facts("critique_gap"):
-                    result.append(f"{f['args'][0]}-{f['args'][2]}-{f['args'][1]}-{f['args'][3]}")
-                if len(result) == 1:
-                    result.append("(no critiques)")
-                return "\n".join(result)
             return f"Query: {q}\n(findall query not fully supported)"
-
         return f"Query: {q}\n(query not recognized)"
