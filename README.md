@@ -1,182 +1,87 @@
-# evo_code_scratch_pad
+# EVO — Explicit-assumption Verification Orchestrator
 
-**EVO CODE Tier persistent workspace.** This repository is the scratch pad for
-[EVO](https://github.com/machinelearning2014/artificial_mind)
-(Explicit-assumption Verification Orchestrator) CODE-tier tasks.
+> *"I think in Prolog. I prove in Lean. I compute in Python. I verify everything."*
 
-## Purpose
+## What EVO Is
 
-When EVO executes a CODE-tier workflow (K1 inspect -> K2 ledger -> K3 change ->
-K4 verify -> K5 answer), this repo serves as the persistent evidence store.
-Every file change, test result, and PR is an auditable artifact -- not ephemeral
-tool output.
+EVO is an intelligent reasoning agent whose architecture is built on five unshakable principles:
 
-## How EVO Uses This Repo
+1. **Prolog-First** — Every inference must be derivable, not just asserted. Facts are predicates. Rules are clauses. Conclusions are queries.
+2. **Assumptions Are First-Class Objects** — No inference bridge is hidden. Every assumption is named, justified, and testable. A conclusion is only as strong as its weakest assumption dependency.
+3. **Evidence Before Authority** — Answers are grounded in tool execution outputs, not memory. Each tier (LITE, COMPUTE, CODE, REASON, PROVE) has a designated primary evidence mechanism.
+4. **Consistency Is Enforced** — A knowledge base that derives `inconsistent/0` must be repaired before any conclusion stands.
+5. **Proof Over Prose** — Formal verification (Lean 4) is the sole authority for mathematical proofs. Prolog tracks the plan. Python explores patterns. Lean compiles the truth.
 
-EVO operates in two modes, chosen automatically based on task complexity:
-
-| Mode | When | Mechanism |
-|------|------|-----------|
-| **inline** | Single-file fixes, small changes | GitHub API writes + CI |
-| **codespace** | Multi-file refactors, debugging | gh codespace + terminal |
-
-### Workflow
-
-1. **K1 Inspect:** EVO reads the target repo/issue via github_public
-2. **K2 Ledger:** EVO maps code facts into a Prolog KB
-3. **K3 Change:** EVO writes files to a feature branch (evo/<slug>-<timestamp>)
-4. **K4 Verify:** EVO runs tests via CI (inline) or pytest/npm test in a Codespace
-5. **K5 Answer:** EVO creates a PR with the verified changes
-
-### Branch convention
-
-evo/<task-slug>-<YYYYMMDD-HHMMSS>
-
-Example: evo/fix-auth-bug-20260608-143022
-
-## CI
-
-The ci.yml workflow is triggered via workflow_dispatch and should detect the
-project type and run the appropriate test suite.
-
-## Codespaces
-
-Pre-configured with common dev tools. EVO spins up a Codespace via
-gh codespace create, runs tests interactively, and tears down when done.
-Defaults to the 2-core machine (free tier: ~660 hrs/month).
-
-## Security
-
-- EVO writes are scoped to branches prefixed with evo/
-- Main branch protection prevents direct pushes
-- All changes go through PR review
-
----
-
-# Operational Learnings: Running Tests & Triggering CI
-
-This section captures hands-on experience accumulated across **22 CI workflow runs, 8+
-feature branches, and 4 open PRs** in this repository.
-
-## 1. CI Must Be Triggered Explicitly
-
-The CI workflow (`.github/workflows/ci.yml`) is configured as **`workflow_dispatch` only**
---- it does NOT trigger on push, pull_request, or any other event. Every CI run must be
-initiated explicitly.
-
-**How EVO dispatches CI (inline mode):**
-
-After writing files via the GitHub API, `code_scratch_pad stage=test` calls:
+## Architecture
 
 ```
-POST /repos/test1-deepthought/evo_code_scratch_pad/actions/workflows/ci.yml/dispatches
-{"ref": "evo/<branch-name>"}
+                    ┌──────────────────────┐
+                    │   Tier-0 Runtime      │
+                    │   (Classification)    │
+                    └──────┬───────┬────────┘
+                           │       │
+              ┌────────────┘       └────────────┐
+              ↓                                  ↓
+     ┌────────────────┐                ┌─────────────────┐
+     │  LITE / COMPUTE │                │  CODE / REASON   │
+     │  (Tool Direct)  │                │  (Prolog First)  │
+     └────────────────┘                └────────┬─────────┘
+                                                │
+                                    ┌───────────┴───────────┐
+                                    │    Prolog KB Engine    │
+                                    │  ┌─────────────────┐  │
+                                    │  │ Observations     │  │
+                                    │  │ Claims           │  │
+                                    │  │ Rules            │  │
+                                    │  │ Assumptions      │  │
+                                    │  │ Constraints      │  │
+                                    │  │ Harness          │  │
+                                    │  └─────────────────┘  │
+                                    └───────────┬───────────┘
+                                                │
+                         ┌──────────────────────┼──────────────────────┐
+                         ↓                      ↓                      ↓
+                  ┌────────────┐         ┌────────────┐         ┌────────────┐
+                  │  DERIVE    │         │ CONSISTENCY│         │ ASSUMPTION │
+                  │  (prove/2) │         │ (inconsistent/0)│     │  TESTING   │
+                  └────────────┘         └────────────┘         └────────────┘
+                                                │
+                                        ┌───────┴───────┐
+                                        │   PROVE Tier   │
+                                        │  (Lean 4 +    │
+                                        │   Mathlib4)   │
+                                        └───────────────┘
 ```
 
-Then polls `GET /repos/.../actions/runs?branch=<branch>&event=workflow_dispatch` up to
-300 seconds until the run completes.
+## The Five Tiers
 
-**Manual dispatch via GitHub UI:**
-1. Navigate to https://github.com/test1-deepthought/evo_code_scratch_pad/actions
-2. Select the "CI" workflow
-3. Click "Run workflow" -> select branch -> "Run workflow"
+| Tier | Primary Evidence | When Used |
+|------|-----------------|-----------|
+| LITE | Web search / internal knowledge / compact Prolog ledger | Fact lookup, simple questions |
+| COMPUTE | Python/SymPy with verification claims | Numerical/symbolic computation |
+| CODE | Source inspection + reasoning ledger | Code review, debugging, security |
+| REASON | Prolog derivation (prove/2 with proof traces) | Logical/philosophical reasoning |
+| PROVE | Lean 4 verification (lean4_exit_code(0)) | Formal mathematical proofs |
 
-**Manual dispatch via curl:**
-```bash
-curl -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github.v3+json" \
-  https://api.github.com/repos/test1-deepthought/evo_code_scratch_pad/actions/workflows/ci.yml/dispatches \
-  -d '{"ref":"evo/fix-ci-test-pr1-20260609-011420"}'
-```
+## Core Predicates
 
-## 2. Main Branch CI Is a Trap
+- `observation(Fact)` — Ground truth acquired from tools or premises
+- `claim(Proposition)` — User-stated claim under analysis
+- `assumption(Name, Justification)` — Named inference bridge with textual justification
+- `active_assumption(Name)` — Dynamic predicate controlling which assumptions are live
+- `prove(Goal, Proof)` — Derives Goal using call/1 and records the proof
+- `inconsistent/0` — True when contradictory_pair/2 succeeds
+- `conclusion(Answer)` — Derived result of the reasoning process
+- `solved(Name, Status)` — Fulfillment status for each spec requirement
 
-The current `main` branch CI runs `python3 tests/test_pr1.py`, but that file only exists
-on the `evo/fix-ci-test-pr1-20260609-011420` feature branch --- it has **not** been merged
-to main. Dispatching CI on **main** will fail with a file-not-found error.
+## Halt Conditions
 
-**The fix branch** (`evo/fix-ci-test-pr1`) uses a more robust CI with graceful fallbacks:
-1. Tries `pytest tests/ -v` (if pytest is installed)
-2. Falls back to `python3 tests/run_pr1_tests.py`
-3. Falls back to `python3 tests/test_pr1.py`
-4. Finally prints "No test file found" if nothing exists
+EVO halts when:
+- Evidence requirements cannot be met (HALT conditions H1–H8)
+- The knowledge base is irreparably inconsistent
+- A Lean proof still contains `sorry` after the deadline
+- The tier's primary evidence mechanism cannot deliver
 
-**Lesson:** Until the feature branch is merged, dispatch CI only on branches that have
-the `tests/` directory. Once merged, update the main CI to include the fallback chain.
+## License
 
-## 3. Inline Mode (GitHub API) Is the Reliable Default
-
-| Aspect | Inline Mode | Codespace Mode |
-|--------|-------------|----------------|
-| Mechanism | GitHub API writes + workflow_dispatch CI | gh codespace create + terminal |
-| Test feedback | CI logs (polled) | Interactive terminal |
-| Reliability | **Proven across 22/22 runs** | Intermittent `gh` CLI issues (PR #5) |
-| Speed | ~10-15s total | 30-60s spin-up + teardown |
-| Cost | Free (GitHub Actions) | Free tier (~660 hrs/month) |
-
-The codespace mode had `gh` CLI `--json` flag compatibility issues documented in PR #5.
-When codespace creation fails, the tool falls back to inline mode --- a critical safety net.
-
-## 4. Import Paths Are Tricky for Nested Modules
-
-The `pr1_mind/` module lives at the repo root, but tests live in `tests/`. Python's
-default `sys.path` behavior means `from pr1_mind.shared_kb import ...` fails with
-`ModuleNotFoundError` when running `python3 tests/test_pr1.py`.
-
-**The fix** --- add the repo root to `sys.path` at the top of the test file:
-
-```python
-_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _repo_root not in sys.path:
-    sys.path.insert(0, _repo_root)
-```
-
-This pattern is proven and should be replicated in any new test file under `tests/`.
-
-## 5. Both pytest and Standalone Work
-
-The test file (`tests/test_pr1.py`) is designed to work **both** with pytest (for nice
-fixture management and detailed reporting) and standalone (for environments where pytest
-isn't installed):
-
-- **With pytest:** `pip install pytest && pytest tests/test_pr1.py -v`
-- **Standalone:** `python3 tests/test_pr1.py`
-
-The CI's fallback chain (see Learning #2) handles both paths gracefully.
-
-## 6. CI Run History
-
-| Statistic | Value |
-|-----------|-------|
-| Total workflow runs | 22 |
-| Status | All 22 completed successfully |
-| Branches tested | `evo/fix-ci-test-pr1-20260609-011420`, `evo/test-code-tier-scratch-pad-*`, and others |
-| CI runtime (typical) | ~10-15 seconds |
-| Open PRs | 4 (#3, #4, #5, #6) |
-
-## 7. Test Pattern: Self-Contained with Fixtures
-
-Each test creates its own `SharedKB` with a random tag (`uuid.uuid4().hex`) to prevent
-cross-test contamination, and cleans up with `_cleanup(kb)` which deletes the temp `.pl`
-file. The `Fixtures` class provides static methods usable by both pytest and standalone
-modes.
-
-**Key pattern to follow for new tests:**
-```python
-class Fixtures:
-    @staticmethod
-    def shared_kb():
-        tag = uuid.uuid4().hex
-        kb = SharedKB(tag=tag)
-        kb.clean()
-        return kb
-
-    @staticmethod
-    def cleanup(kb):
-        kb.clean()
-```
-
----
-
-*Last updated: 2026-06-09 | 22 CI runs | 4 open PRs*
+EVO is a reasoning architecture. Use it. Extend it. Question your assumptions.
