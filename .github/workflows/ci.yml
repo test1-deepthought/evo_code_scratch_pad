@@ -1,20 +1,66 @@
-name: CI
+name: EVO CI — Verify Self-Description Codebase
 
 on:
-  workflow_dispatch:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
 
 jobs:
-  test:
+  prolog-verify:
+    name: Prolog — Load and validate KB modules
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: swipl/setup-swi-prolog@v1
         with:
-          ref: ${{ github.event.ref || github.ref }}
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          swi-version: 'stable'
+      - name: Validate core modules
+        run: |
+          for f in core/*.pl; do
+            echo "Checking $f..."
+            swipl -q -f "$f" -t halt 2>&1 || exit 1
+          done
+      - name: Validate harness module
+        run: |
+          swipl -q -f harness/reason_harness.pl -t halt 2>&1 || exit 1
+      - name: Validate combined load
+        run: |
+          echo ":- [core/engine, core/assumptions, core/consistency, core/proof_trace, core/tiers]." > /tmp/evo_load.pl
+          swipl -q -f /tmp/evo_load.pl -t halt 2>&1 || exit 1
+
+  lean-verify:
+    name: Lean 4 — Verify formal proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan (Lean 4)
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.0.0/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+      - name: Verify Lean theorems
+        run: |
+          lake +leanprover/lean4:nightly-2025-02-14 env lean prove/evos_first_theorem.lean 2>&1 || exit 1
+
+  python-explore:
+    name: Python — Verify exploration patterns
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Check Python
-        run: python3 --version
-      - name: Run PR #1 tests
-        run: python3 tests/test_pr1.py
+      - name: Run exploration scripts
+        run: |
+          for f in explore/*.py; do
+            echo "Running $f..."
+            python3 "$f" 2>&1 || exit 1
+          done
+
+  status-check:
+    name: Final — All tiers verified
+    needs: [prolog-verify, lean-verify, python-explore]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "✅ EVO Self-Description Codebase — All tiers pass"
