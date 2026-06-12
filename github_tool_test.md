@@ -1,5 +1,7 @@
-# GitHub Tool Test
+# GitHub Tool Test — Updated
 
-This file was created by the github tool's create_or_update_file operation to test write functionality.
+This file was UPDATED by the github tool's create_or_update_file operation.
 
-Timestamp: Testing all GitHub tool operations.
+- Original creation: works ✓
+- Update (modify existing): works ✓
+- Next: delete test
