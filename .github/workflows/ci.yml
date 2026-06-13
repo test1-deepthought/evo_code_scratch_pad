@@ -1,3 +1,4 @@
+# GitHub Actions Workflow — Lean4 Theorem Generator Pipeline
 name: CI — Lean4 Theorem Generator
 
 on:
