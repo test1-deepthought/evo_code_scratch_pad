@@ -1,0 +1,15 @@
+{"prompt": "A theorem that the sum of two even natural numbers is even", "difficulty": "easy"}
+{"prompt": "If a natural number n is prime and n divides a*b, then n divides a or n divides b", "difficulty": "medium"}
+{"prompt": "The composition of two injective functions is injective", "difficulty": "medium"}
+{"prompt": "The set of all subsets of a set has cardinality 2^n where n is the cardinality of the original set", "difficulty": "hard"}
+{"prompt": "Continuity implies sequential continuity for functions between metric spaces", "difficulty": "hard"}
+{"prompt": "There are infinitely many prime numbers", "difficulty": "medium"}
+{"prompt": "A subgroup of a cyclic group is cyclic", "difficulty": "medium"}
+{"prompt": "The intermediate value theorem: a continuous function on a closed interval attains all intermediate values", "difficulty": "hard"}
+{"prompt": "The fundamental theorem of arithmetic: every integer greater than 1 can be factored uniquely into primes", "difficulty": "hard"}
+{"prompt": "The determinant of a product of two square matrices equals the product of their determinants", "difficulty": "medium"}
+{"prompt": "Euler's theorem: a^phi(n) ≡ 1 (mod n) when a and n are coprime", "difficulty": "hard"}
+{"prompt": "A theorem about the dimension of the sum of two subspaces: dim(U+V) = dim(U) + dim(V) - dim(U∩V)", "difficulty": "hard"}
+{"prompt": "The union of two finite sets is finite", "difficulty": "easy"}
+{"prompt": "A convergent sequence in a metric space is Cauchy", "difficulty": "medium"}
+{"prompt": "The binomial theorem for natural number exponents", "difficulty": "medium"}
