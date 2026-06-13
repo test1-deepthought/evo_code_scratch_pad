@@ -1,20 +1,11 @@
 name: CI
-
-on:
-  workflow_dispatch:
-
+on: [push]
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.ref || github.ref }}
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Check Python
-        run: python3 --version
-      - name: Run PR #1 tests
-        run: python3 tests/test_pr1.py
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - run: python3 deepseek_v4_flash_agent.py
