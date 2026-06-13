@@ -1,0 +1,21 @@
+# Lean4 Theorem Generator — Fine-Tuning Pipeline
+# Core ML
+torch>=2.1.0
+transformers>=4.36.0
+datasets>=2.14.0
+accelerate>=0.25.0
+peft>=0.7.0
+bitsandbytes>=0.41.0
+
+# Training utilities
+trl>=0.7.0
+wandb>=0.15.0
+tensorboard>=2.14.0
+
+# Data processing
+tqdm>=4.66.0
+jsonlines>=3.1.0
+
+# Lean4 parsing / extraction
+pathlib>=1.0.1
+gitpython>=3.1.40
