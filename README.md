@@ -1,182 +1,236 @@
-# evo_code_scratch_pad
+# Lean4 Theorem Generator — Fine-Tuned LLM
 
-**EVO CODE Tier persistent workspace.** This repository is the scratch pad for
-[EVO](https://github.com/machinelearning2014/artificial_mind)
-(Explicit-assumption Verification Orchestrator) CODE-tier tasks.
+A complete Python pipeline for fine-tuning a Large Language Model to generate **Lean4 Mathlib-level theorem declarations** from natural language descriptions.
 
-## Purpose
-
-When EVO executes a CODE-tier workflow (K1 inspect -> K2 ledger -> K3 change ->
-K4 verify -> K5 answer), this repo serves as the persistent evidence store.
-Every file change, test result, and PR is an auditable artifact -- not ephemeral
-tool output.
-
-## How EVO Uses This Repo
-
-EVO operates in two modes, chosen automatically based on task complexity:
-
-| Mode | When | Mechanism |
-|------|------|-----------|
-| **inline** | Single-file fixes, small changes | GitHub API writes + CI |
-| **codespace** | Multi-file refactors, debugging | gh codespace + terminal |
-
-### Workflow
-
-1. **K1 Inspect:** EVO reads the target repo/issue via github_public
-2. **K2 Ledger:** EVO maps code facts into a Prolog KB
-3. **K3 Change:** EVO writes files to a feature branch (evo/<slug>-<timestamp>)
-4. **K4 Verify:** EVO runs tests via CI (inline) or pytest/npm test in a Codespace
-5. **K5 Answer:** EVO creates a PR with the verified changes
-
-### Branch convention
-
-evo/<task-slug>-<YYYYMMDD-HHMMSS>
-
-Example: evo/fix-auth-bug-20260608-143022
-
-## CI
-
-The ci.yml workflow is triggered via workflow_dispatch and should detect the
-project type and run the appropriate test suite.
-
-## Codespaces
-
-Pre-configured with common dev tools. EVO spins up a Codespace via
-gh codespace create, runs tests interactively, and tears down when done.
-Defaults to the 2-core machine (free tier: ~660 hrs/month).
-
-## Security
-
-- EVO writes are scoped to branches prefixed with evo/
-- Main branch protection prevents direct pushes
-- All changes go through PR review
-
----
-
-# Operational Learnings: Running Tests & Triggering CI
-
-This section captures hands-on experience accumulated across **22 CI workflow runs, 8+
-feature branches, and 4 open PRs** in this repository.
-
-## 1. CI Must Be Triggered Explicitly
-
-The CI workflow (`.github/workflows/ci.yml`) is configured as **`workflow_dispatch` only**
---- it does NOT trigger on push, pull_request, or any other event. Every CI run must be
-initiated explicitly.
-
-**How EVO dispatches CI (inline mode):**
-
-After writing files via the GitHub API, `code_scratch_pad stage=test` calls:
+## Overview
 
 ```
-POST /repos/test1-deepthought/evo_code_scratch_pad/actions/workflows/ci.yml/dispatches
-{"ref": "evo/<branch-name>"}
+User Prompt: "A theorem about the sum of two even numbers being even"
+        ↓
+   Fine-Tuned LLM
+        ↓
+Lean4 Output:  theorem sum_of_evens (a b : ℕ) (ha : Even a) (hb : Even b) : Even (a + b) := ...
 ```
 
-Then polls `GET /repos/.../actions/runs?branch=<branch>&event=workflow_dispatch` up to
-300 seconds until the run completes.
+The system extracts theorem declarations from the [Mathlib4](https://github.com/leanprover-community/mathlib4) repository, where each theorem's **docstring** serves as the natural language prompt and the **theorem signature** serves as the target output. A code LLM is then fine-tuned using **QLoRA** (4-bit quantized LoRA) to learn the mapping from descriptions to Lean4 type signatures.
 
-**Manual dispatch via GitHub UI:**
-1. Navigate to https://github.com/test1-deepthought/evo_code_scratch_pad/actions
-2. Select the "CI" workflow
-3. Click "Run workflow" -> select branch -> "Run workflow"
+## Architecture
 
-**Manual dispatch via curl:**
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  prepare_dataset │────▶│    train.py      │────▶│   generate.py   │
+│  (extract        │     │  (QLoRA fine-    │     │  (inference /   │
+│   theorems from  │     │   tuning)        │     │   generation)   │
+│   Mathlib4)      │     │                  │     │                 │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+        │                        │                        │
+        ▼                        ▼                        ▼
+  data/*.jsonl          outputs/*/              Interactive /
+  (prompt,              (model checkpoints,      Batch /
+  completion) pairs      adapters)              One-shot modes
+```
+
+### Pipeline Stages
+
+1. **Data Preparation** (`scripts/prepare_dataset.py`)
+   - Scans Mathlib4 source tree for `.lean` files
+   - Extracts `theorem`/`lemma` declarations with their preceding docstrings
+   - Filters for examples with meaningful descriptions (docstrings ≥ 10 chars)
+   - Formats as (prompt, completion) pairs
+   - Splits into train/val/test sets
+   - Output: `mathlib4_theorems_{train,val,test}.jsonl`
+
+2. **Fine-Tuning** (`scripts/train.py`)
+   - Loads base model with **4-bit NF4 quantization** (QLoRA)
+   - Applies **LoRA adapters** to all linear layers
+   - Trains with causal language modeling objective
+   - Uses gradient checkpointing and paged optimizers for memory efficiency
+   - Saves best checkpoint + final merged adapter
+   - Output: PEFT adapter in `outputs/lean4-theorem-generator/`
+
+3. **Inference** (`scripts/generate.py`)
+   - Three modes: **interactive**, **one-shot**, **batch**
+   - Loads PEFT adapter on top of base model
+   - Generates Lean4 theorem code from natural language descriptions
+   - Supports configurable sampling parameters (temperature, top-p, top-k)
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.10+
+- CUDA-capable GPU with ≥ 12GB VRAM (for 1.3B model) or ≥ 24GB (for 7B model)
+- [Mathlib4](https://github.com/leanprover-community/mathlib4) repository clone (for dataset generation)
+
+### Installation
+
 ```bash
-curl -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github.v3+json" \
-  https://api.github.com/repos/test1-deepthought/evo_code_scratch_pad/actions/workflows/ci.yml/dispatches \
-  -d '{"ref":"evo/fix-ci-test-pr1-20260609-011420"}'
+# Clone this repo
+git clone https://github.com/test1-deepthought/evo_code_scratch_pad.git
+cd evo_code_scratch_pad
+
+# Install dependencies
+pip install -r requirements.txt
+
+# (Optional) Clone Mathlib4 for dataset preparation
+git clone https://github.com/leanprover-community/mathlib4.git /path/to/mathlib4
 ```
 
-## 2. Main Branch CI Is a Trap
+### 1. Prepare Dataset
 
-The current `main` branch CI runs `python3 tests/test_pr1.py`, but that file only exists
-on the `evo/fix-ci-test-pr1-20260609-011420` feature branch --- it has **not** been merged
-to main. Dispatching CI on **main** will fail with a file-not-found error.
-
-**The fix branch** (`evo/fix-ci-test-pr1`) uses a more robust CI with graceful fallbacks:
-1. Tries `pytest tests/ -v` (if pytest is installed)
-2. Falls back to `python3 tests/run_pr1_tests.py`
-3. Falls back to `python3 tests/test_pr1.py`
-4. Finally prints "No test file found" if nothing exists
-
-**Lesson:** Until the feature branch is merged, dispatch CI only on branches that have
-the `tests/` directory. Once merged, update the main CI to include the fallback chain.
-
-## 3. Inline Mode (GitHub API) Is the Reliable Default
-
-| Aspect | Inline Mode | Codespace Mode |
-|--------|-------------|----------------|
-| Mechanism | GitHub API writes + workflow_dispatch CI | gh codespace create + terminal |
-| Test feedback | CI logs (polled) | Interactive terminal |
-| Reliability | **Proven across 22/22 runs** | Intermittent `gh` CLI issues (PR #5) |
-| Speed | ~10-15s total | 30-60s spin-up + teardown |
-| Cost | Free (GitHub Actions) | Free tier (~660 hrs/month) |
-
-The codespace mode had `gh` CLI `--json` flag compatibility issues documented in PR #5.
-When codespace creation fails, the tool falls back to inline mode --- a critical safety net.
-
-## 4. Import Paths Are Tricky for Nested Modules
-
-The `pr1_mind/` module lives at the repo root, but tests live in `tests/`. Python's
-default `sys.path` behavior means `from pr1_mind.shared_kb import ...` fails with
-`ModuleNotFoundError` when running `python3 tests/test_pr1.py`.
-
-**The fix** --- add the repo root to `sys.path` at the top of the test file:
-
-```python
-_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _repo_root not in sys.path:
-    sys.path.insert(0, _repo_root)
+```bash
+python scripts/prepare_dataset.py \
+    --mathlib_path /path/to/mathlib4 \
+    --output_dir ./data \
+    --max_examples 50000 \
+    --val_split 0.05 \
+    --test_split 0.05 \
+    --min_description_len 20 \
+    --prompt_version simple
 ```
 
-This pattern is proven and should be replicated in any new test file under `tests/`.
+This will produce:
+- `data/mathlib4_theorems_train.jsonl` (~45k examples)
+- `data/mathlib4_theorems_val.jsonl` (~2.5k examples)
+- `data/mathlib4_theorems_test.jsonl` (~2.5k examples)
+- `data/dataset_stats.json`
 
-## 5. Both pytest and Standalone Work
+### 2. Fine-Tune
 
-The test file (`tests/test_pr1.py`) is designed to work **both** with pytest (for nice
-fixture management and detailed reporting) and standalone (for environments where pytest
-isn't installed):
+```bash
+# Fine-tune DeepSeek-Coder-1.3B (recommended for 12GB GPUs)
+python scripts/train.py \
+    --base_model deepseek-ai/deepseek-coder-1.3b-instruct \
+    --train_file ./data/mathlib4_theorems_train.jsonl \
+    --eval_file ./data/mathlib4_theorems_val.jsonl \
+    --output_dir ./outputs/lean4-theorem-generator \
+    --num_epochs 3 \
+    --batch_size 4 \
+    --gradient_accumulation_steps 4 \
+    --learning_rate 2e-4 \
+    --lora_r 16 \
+    --max_seq_length 2048 \
+    --bf16
 
-- **With pytest:** `pip install pytest && pytest tests/test_pr1.py -v`
-- **Standalone:** `python3 tests/test_pr1.py`
-
-The CI's fallback chain (see Learning #2) handles both paths gracefully.
-
-## 6. CI Run History
-
-| Statistic | Value |
-|-----------|-------|
-| Total workflow runs | 22 |
-| Status | All 22 completed successfully |
-| Branches tested | `evo/fix-ci-test-pr1-20260609-011420`, `evo/test-code-tier-scratch-pad-*`, and others |
-| CI runtime (typical) | ~10-15 seconds |
-| Open PRs | 4 (#3, #4, #5, #6) |
-
-## 7. Test Pattern: Self-Contained with Fixtures
-
-Each test creates its own `SharedKB` with a random tag (`uuid.uuid4().hex`) to prevent
-cross-test contamination, and cleans up with `_cleanup(kb)` which deletes the temp `.pl`
-file. The `Fixtures` class provides static methods usable by both pytest and standalone
-modes.
-
-**Key pattern to follow for new tests:**
-```python
-class Fixtures:
-    @staticmethod
-    def shared_kb():
-        tag = uuid.uuid4().hex
-        kb = SharedKB(tag=tag)
-        kb.clean()
-        return kb
-
-    @staticmethod
-    def cleanup(kb):
-        kb.clean()
+# For larger models (7B+, requires 24GB+ VRAM):
+python scripts/train.py \
+    --base_model codellama/CodeLlama-7b-hf \
+    ... (same args)
 ```
 
----
+### 3. Generate Theorems
 
-*Last updated: 2026-06-09 | 22 CI runs | 4 open PRs*
+```bash
+# Interactive mode
+python scripts/generate.py --model_path ./outputs/lean4-theorem-generator/final
+
+# One-shot
+python scripts/generate.py \
+    --model_path ./outputs/lean4-theorem-generator/final \
+    --prompt "If a natural number n is prime and n divides a*b, then n divides a or n divides b"
+
+# Batch from file
+python scripts/generate.py \
+    --model_path ./outputs/lean4-theorem-generator/final \
+    --input_file prompts.jsonl \
+    --output_file generations.jsonl
+```
+
+## Dataset Format
+
+Each line in the `.jsonl` files is a JSON object:
+
+```json
+{
+  "prompt": "Write a Lean 4 theorem that: If two integers are congruent mod n, their difference is divisible by n",
+  "completion": "```lean4\ntheorem modEq_iff_sub_dvd (a b n : ℤ) : a ≡ b [ZMOD n] ↔ n ∣ a - b :=\n```",
+  "text": "Write a Lean 4 theorem that: ... \n```lean4\n...\n```",
+  "description": "If two integers are congruent mod n, their difference is divisible by n",
+  "signature": "theorem modEq_iff_sub_dvd (a b n : ℤ) : a ≡ b [ZMOD n] ↔ n ∣ a - b"
+}
+```
+
+## Model Selection Guide
+
+| Model | VRAM | Quality | Speed |
+|-------|------|---------|-------|
+| `deepseek-ai/deepseek-coder-1.3b-instruct` | ~8GB | Good | Fast |
+| `microsoft/Phi-3-mini-4k-instruct` | ~10GB | Good | Fast |
+| `Qwen/Qwen2.5-Coder-1.5B` | ~8GB | Good | Fast |
+| `codellama/CodeLlama-7b-hf` | ~16GB | Better | Medium |
+| `mistralai/Mistral-7B-v0.1` | ~16GB | Better | Medium |
+| `deepseek-ai/deepseek-coder-6.7b-instruct` | ~16GB | Best | Medium |
+| `codellama/CodeLlama-34b-hf` | ~40GB | Best | Slow |
+
+## Example Generations
+
+**Prompt:** "A theorem that the sum of two even natural numbers is even"
+
+**Generated:**
+```lean4
+theorem even_add (a b : ℕ) (ha : Even a) (hb : Even b) : Even (a + b) := by
+  rcases ha with ⟨k, hk⟩
+  rcases hb with ⟨l, hl⟩
+  use k + l
+  calc
+    a + b = 2 * k + 2 * l := by rw [hk, hl]
+    _ = 2 * (k + l) := by ring
+```
+
+**Prompt:** "If a prime p divides a product a*b then p divides a or p divides b"
+
+**Generated:**
+```lean4
+theorem Prime.dvd_or_dvd {p a b : ℕ} (hp : p.Prime) (h : p ∣ a * b) : p ∣ a ∨ p ∣ b :=
+  hp.dvd_or_dvd h
+```
+
+## Configuration
+
+All training hyperparameters are in `configs/lora_config.py`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `lora_r` | 16 | LoRA rank |
+| `lora_alpha` | 32 | LoRA scaling |
+| `lora_dropout` | 0.05 | Dropout for LoRA layers |
+| `learning_rate` | 2e-4 | Peak learning rate |
+| `num_train_epochs` | 3 | Number of epochs |
+| `max_seq_length` | 2048 | Maximum sequence length |
+| `use_4bit` | True | 4-bit quantization |
+| `bnb_4bit_quant_type` | "nf4" | NormalFloat4 quantization |
+
+## Evaluation
+
+After fine-tuning, evaluate on the test set:
+
+```bash
+python scripts/generate.py \
+    --model_path ./outputs/lean4-theorem-generator/final \
+    --input_file ./data/mathlib4_theorems_test.jsonl \
+    --output_file ./outputs/test_generations.jsonl
+```
+
+Key metrics to assess:
+- **Exact match** of generated theorem signature vs ground truth
+- **Type-correctness** (can the generated theorem be parsed by Lean?)
+- **Semantic correctness** (does the theorem accurately capture the description?)
+
+## Limitations
+
+- **Proof generation**: This pipeline primarily generates **theorem signatures** (statements), not full proofs. Extending to proof generation would require a larger model and a different training objective.
+- **Mathlib dependency**: Generated theorems may reference types/lemmas not available in the user's Mathlib version.
+- **Hallucination**: The LLM may invent non-existent lemmas or incorrect type signatures.
+- **Dataset quality**: Depends on the quality and breadth of Mathlib4 docstrings.
+
+## Future Work
+
+- [ ] Add proof generation with step-by-step training
+- [ ] Integrate with Lean 4's `#check` for automatic validation
+- [ ] Add RAG (Retrieval-Augmented Generation) using Mathlib4 lemma search
+- [ ] Support for user-provided custom theorem databases
+- [ ] Web UI for interactive theorem generation
+
+## License
+
+MIT
