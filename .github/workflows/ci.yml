@@ -46,48 +46,46 @@ jobs:
           done
 
       - name: Validate Python syntax
+        shell: python
         run: |
-          python -c "
-import ast, sys
-scripts = [
-    'configs/lora_config.py',
-    'scripts/prepare_dataset.py',
-    'scripts/train.py',
-    'scripts/generate.py',
-]
-errors = []
-for s in scripts:
-    try:
-        with open(s) as f:
-            ast.parse(f.read(), filename=s)
-        print(f'OK: {s}')
-    except SyntaxError as e:
-        errors.append(f'SYNTAX_ERROR in {s}: {e}')
-        print(f'FAIL: {s}: {e}')
-if errors:
-    sys.exit(1)
-"
+          import ast, sys
+          scripts = [
+            'configs/lora_config.py',
+            'scripts/prepare_dataset.py',
+            'scripts/train.py',
+            'scripts/generate.py',
+          ]
+          errors = []
+          for s in scripts:
+            try:
+              with open(s) as f:
+                ast.parse(f.read(), filename=s)
+              print(f'OK: {s}')
+            except SyntaxError as e:
+              errors.append(f'SYNTAX_ERROR in {s}: {e}')
+              print(f'FAIL: {s}: {e}')
+          if errors:
+            sys.exit(1)
 
       - name: Validate sample_prompts.jsonl
+        shell: python
         run: |
-          python -c "
-import json
-with open('sample_prompts.jsonl') as f:
-    for i, line in enumerate(f, 1):
-        line = line.strip()
-        if not line:
-            continue
-        obj = json.loads(line)
-        assert 'prompt' in obj and 'difficulty' in obj, f'Line {i}: missing fields'
-        assert obj['difficulty'] in ('easy', 'medium', 'hard'), f'Line {i}: bad difficulty'
-print('sample_prompts.jsonl: valid (' + str(i) + ' entries)')
-"
+          import json
+          with open('sample_prompts.jsonl') as f:
+              for i, line in enumerate(f, 1):
+                  line = line.strip()
+                  if not line:
+                      continue
+                  obj = json.loads(line)
+                  assert 'prompt' in obj and 'difficulty' in obj, f'Line {i}: missing fields'
+                  assert obj['difficulty'] in ('easy', 'medium', 'hard'), f'Line {i}: bad difficulty'
+          print(f'sample_prompts.jsonl: valid ({i} entries)')
 
       - name: Run test suite (if tests/ present)
+        shell: bash
         run: |
           if [ -d "tests" ]; then
-            python -m pytest tests/ -v --tb=short --ignore=tests/run_all.py 2>&1 || \
-            python tests/run_all.py
+            python -m pytest tests/ -v --tb=short 2>&1 || python tests/run_all.py
           else
             echo "tests/ directory not found - skipping unit tests"
           fi
