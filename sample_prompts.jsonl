@@ -13,3 +13,4 @@
 {"prompt": "The union of two finite sets is finite", "difficulty": "easy"}
 {"prompt": "A convergent sequence in a metric space is Cauchy", "difficulty": "medium"}
 {"prompt": "The binomial theorem for natural number exponents", "difficulty": "medium"}
+{"prompt": "The pigeonhole principle: if n items are placed into m boxes and n > m, then at least one box contains more than one item", "difficulty": "medium"}
