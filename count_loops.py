@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Count tilings of an AxB area into T loops using correct recurrence."""
+"""Count tilings of an AxB area into T loops."""
+
+import sys
+sys.setrecursionlimit(10000)
 
 from functools import lru_cache
 
 @lru_cache(maxsize=None)
 def g(A, B, T):
-    """Number of guillotine tilings of AxB into T loops."""
     if A < 2 or B < 2:
         return 1 if T == 0 else 0
     if T == 0:
@@ -33,13 +35,15 @@ def g(A, B, T):
     
     return total
 
-# Test small cases
+# Compute the answer
+result = g(10, 10, 5)
+print(f"g(10,10,5) = {result}")
+
+# Verify with small cases
+print("\nSmall case verification:")
 for A in range(2, 7):
     for B in range(2, 7):
-        for T in range(1, 6):
+        for T in range(1, 5):
             c = g(A, B, T)
             if c > 0:
-                print(f"g({A},{B},{T}) = {c}")
-
-print()
-print(f"g(10,10,5) = {g(10,10,5)}")
+                print(f"  g({A},{B},{T}) = {c}")
