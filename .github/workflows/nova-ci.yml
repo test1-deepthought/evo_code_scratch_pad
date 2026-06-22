@@ -1,0 +1,436 @@
+name: NOVA CI
+
+on:
+  push:
+    branches: [ "**" ]
+    paths:
+      - 'nova/**'
+      - 'tests/**'
+      - '.github/workflows/nova-ci.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'nova/**'
+      - 'tests/**'
+      - '.github/workflows/nova-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-type-check:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r nova/requirements.txt
+          pip install pytest pytest-cov mypy ruff pylint
+
+      - name: Lint with ruff
+        run: |
+          ruff check nova/ tests/ --output-format=github
+
+      - name: Type check with mypy
+        run: |
+          mypy nova/ --ignore-missing-imports --follow-imports=skip --python-version ${{ matrix.python-version }}
+        continue-on-error: true
+
+      - name: Check imports with pylint
+        run: |
+          pylint nova/ --disable=C,R,W --errors-only --exit-zero
+
+  test:
+    name: Tests (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r nova/requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run NOVA tests
+        run: |
+          python -m pytest tests/ -v --cov=nova --cov-report=term-missing --cov-fail-under=70
+
+  standalone-verification:
+    name: Standalone Import Verification
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install ONLY nova requirements without evo-ai
+          pip install python-dotenv openai
+
+      - name: Verify standalone imports
+        run: |
+          # Verify each module imports correctly without evo-ai
+          python -c "
+          import sys
+          # Test each module independently
+          from nova.config import (
+              DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL,
+              NOVA_KNOWLEDGE_GRAPH_PATH, NOVA_PROOF_LIBRARY_PATH,
+              NOVA_MAX_AGENTS, NOVA_DEFAULT_CONFIDENCE_THRESHOLD
+          )
+          from nova.evidence_dimensions import EvidenceDimension, classify_dimensions, recommend_tools
+          from nova.confidence_calibrator import ConfidenceCalibrator, ConfidenceScore, ConfidenceLevel
+          from nova.graceful_degradation import DegradationState, degrade, format_degradation_state
+          from nova.knowledge_graph import KnowledgeGraph, Fact, ProofRecord
+          from nova.meta_cognitive_loop import MetaCognitiveLoop, GateType, create_default_loop
+          from nova.proof_library import ProofLibrary, ProofSkeleton, ProofEntry
+          from nova.verification_scheduler import (
+              RiskLevel, VerificationPlan, assess_risk, create_verification_plan, execute_plan
+          )
+          # Test agent module (requires DEEPSEEK_API_KEY, will skip if not set)
+          try:
+              from nova.agent import (
+                  NovaOrchestrator, AgentRole, NovaAgent,
+                  LogicalReasonerAgent, ComputationRunnerAgent,
+                  OrchestratorAgent, AgentMessage, AgentResult,
+                  get_nova_tools
+              )
+              print('agent.py imports OK')
+          except RuntimeError as e:
+              if 'DEEPSEEK_API_KEY' in str(e):
+                  print(f'skipped agent.py: {e}')
+              else:
+                  raise
+          print('All standalone imports verified successfully!')
+          "
+
+  knowledge-graph-persistence:
+    name: Knowledge Graph Persistence
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv
+
+      - name: Test KG persistence
+        run: |
+          python -c "
+          from nova.knowledge_graph import KnowledgeGraph
+          import tempfile, os
+
+          with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+              path = f.name
+
+          try:
+              kg = KnowledgeGraph(path)
+              kg.assert_fact('test_subject', 'test_predicate', 'test_object', source='ci_test')
+              assert len(kg.query(predicate='test_predicate')) == 1, 'Fact not stored'
+
+              export = kg.export_prolog_facts()
+              assert \"fact('test_subject', 'test_predicate', 'test_object'\" in export, \
+                  f'export_prolog_facts() failed: {export[:200]}'
+
+              kg2 = KnowledgeGraph(path)
+              assert len(kg2.query(predicate='test_predicate')) == 1, 'Fact not persisted across instances'
+
+              kg.clear('test_predicate')
+              assert len(kg.query(predicate='test_predicate')) == 0, 'Clear failed'
+
+              print('ALL KNOWLEDGE GRAPH TESTS PASSED')
+          finally:
+              os.unlink(path)
+          "
+
+  proof-library-test:
+    name: Proof Library Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv
+
+      - name: Test proof library
+        run: |
+          python -c "
+          from nova.proof_library import ProofLibrary, ProofSkeleton, ProofEntry
+          import tempfile, os
+
+          with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+              path = f.name
+
+          try:
+              lib = ProofLibrary(path)
+
+              # Store a skeleton
+              skel = ProofSkeleton(
+                  name='induction_test',
+                  strategy='induction',
+                  theorem_template='theorem test (n : N) : ...',
+                  proof_template='induction n with ...',
+                  key_lemmas=['Nat.succ_eq_add_one'],
+                  success_count=1,
+                  tags=['induction', 'natural'],
+              )
+              lib.store_skeleton(skel)
+
+              # Test find
+              found = lib.find_skeleton('induction_test')
+              assert found is not None, 'find_skeleton failed'
+              assert found.strategy == 'induction', f'Wrong strategy: {found.strategy}'
+
+              # Test search
+              matches = lib.search_by_strategy('induction')
+              assert len(matches) == 1, f'search_by_strategy failed: {len(matches)}'
+
+              # Test suggest
+              suggested = lib.suggest_skeleton('Prove by induction that n + 0 = n')
+              assert suggested is not None, 'suggest_skeleton failed'
+
+              # Test extract and store
+              entry = lib.extract_and_store(
+                  'test_theorem',
+                  'theorem test : True := by trivial',
+                  'by trivial',
+                  'direct',
+                  [],
+                  True,
+              )
+              assert entry is not None, 'extract_and_store failed'
+              assert lib.get_stats()['proofs'] == 1
+
+              print('ALL PROOF LIBRARY TESTS PASSED')
+          finally:
+              os.unlink(path)
+          "
+
+  evidence-dimensions-test:
+    name: Evidence Dimensions Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv
+
+      - name: Test evidence dimensions
+        run: |
+          python -c "
+          from nova.evidence_dimensions import (
+              EvidenceDimension, classify_dimensions, recommend_tools,
+              EvidenceProfile, LEGACY_TIER_MAP
+          )
+          from nova.verification_scheduler import assess_risk
+
+          # Test dimension composition
+          combined = EvidenceDimension.COMPUTATION | EvidenceDimension.DERIVATION
+          assert combined & EvidenceDimension.COMPUTATION, 'COMPUTATION not in combined'
+          assert combined & EvidenceDimension.DERIVATION, 'DERIVATION not in combined'
+
+          # Test classification
+          dims = classify_dimensions('Prove that the sum of first n numbers is n(n+1)/2')
+          assert EvidenceDimension.DERIVATION in dims, f'DERIVATION not detected: {dims}'
+          assert EvidenceDimension.COMPUTATION in dims, f'COMPUTATION not detected: {dims}'
+
+          dims2 = classify_dimensions('What is the capital of France?')
+          assert EvidenceDimension.SOURCE in dims2, f'SOURCE not detected: {dims2}'
+
+          # Test tool recommendation
+          tools = recommend_tools(EvidenceDimension.COMPUTATION)
+          assert 'python_exec' in tools, f'python_exec not recommended: {tools}'
+
+          tools2 = recommend_tools(EvidenceDimension.FORMAL)
+          assert 'lean4_exec' in tools2, f'lean4_exec not recommended: {tools2}'
+
+          # Test risk assessment
+          risk = assess_risk('Calculate 2+2', EvidenceDimension.COMPUTATION)
+          assert risk.value == 2 or risk.value == 1, f'Unexpected risk: {risk}'
+
+          print('ALL EVIDENCE DIMENSIONS TESTS PASSED')
+          "
+
+  degradation-test:
+    name: Graceful Degradation Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv
+
+      - name: Test degradation
+        run: |
+          python -c "
+          from nova.confidence_calibrator import ConfidenceCalibrator, ConfidenceLevel, ConfidenceScore
+          from nova.graceful_degradation import DegradationState, degrade, format_degradation_state
+          from nova.evidence_dimensions import EvidenceDimension
+
+          # Test FULLY_VERIFIED
+          certified = ConfidenceScore(0.995, ConfidenceLevel.CERTIFIED, 5,
+                                       EvidenceDimension.FORMAL, 'Lean verified')
+          state = degrade(0.95, certified)
+          assert state == DegradationState.FULLY_VERIFIED, f'Expected FULLY_VERIFIED, got {state}'
+
+          # Test STRONGLY_VERIFIED
+          strong = ConfidenceScore(0.95, ConfidenceLevel.STRONG, 3,
+                                    EvidenceDimension.DERIVATION, 'Multiple sources')
+          state = degrade(0.90, strong)
+          assert state == DegradationState.STRONGLY_VERIFIED, f'Expected STRONGLY_VERIFIED, got {state}'
+
+          # Test INCOMPLETE
+          speculative = ConfidenceScore(0.1, ConfidenceLevel.SPECULATIVE, 0,
+                                         EvidenceDimension.NONE, 'Nothing')
+          state = degrade(0.95, speculative)
+          assert state == DegradationState.INCOMPLETE, f'Expected INCOMPLETE, got {state}'
+
+          # Test PARTIAL_RESULTS (the most common case)
+          weak = ConfidenceScore(0.6, ConfidenceLevel.WEAK, 1,
+                                  EvidenceDimension.SOURCE, 'Single source')
+          state = degrade(0.95, weak, has_any_evidence=True)
+          assert state == DegradationState.PARTIAL_RESULTS, f'Expected PARTIAL_RESULTS, got {state}'
+
+          # Test SKETCH (now reachable!)
+          weak_no_evidence = ConfidenceScore(0.4, ConfidenceLevel.SPECULATIVE, 0,
+                                              EvidenceDimension.NONE, 'Speculative')
+          state = degrade(0.95, weak_no_evidence, has_any_evidence=False)
+          assert state == DegradationState.SKETCH, f'Expected SKETCH, got {state}'
+
+          # Test formatting
+          formatted = format_degradation_state(DegradationState.FULLY_VERIFIED)
+          assert 'FULLY_VERIFIED' in formatted, f'Formatting failed: {formatted}'
+
+          print('ALL DEGRADATION TESTS PASSED')
+          "
+
+  confidence-calibrator-test:
+    name: Confidence Calibrator Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv
+
+      - name: Test confidence calibrator
+        run: |
+          python -c "
+          from nova.confidence_calibrator import (
+              ConfidenceCalibrator, ConfidenceScore, ConfidenceLevel
+          )
+          from nova.evidence_dimensions import EvidenceDimension
+
+          # Test estimate with Lean verification
+          score = ConfidenceCalibrator.estimate(
+              evidence_sources=['lean4_exec', 'prolog_exec'],
+              dimensions=EvidenceDimension.FORMAL,
+          )
+          assert score.probability > 0.9, f'Expected high confidence, got {score.probability}'
+          assert score.level >= ConfidenceLevel.STRONG, f'Expected STRONG+, got {score.level}'
+
+          # Test estimate with weak evidence
+          score2 = ConfidenceCalibrator.estimate(
+              evidence_sources=['internal_knowledge'],
+              dimensions=EvidenceDimension.EXPLANATION,
+          )
+          assert score2.probability < 0.8, f'Expected moderate confidence, got {score2.probability}'
+
+          # Test consistency penalty
+          score3 = ConfidenceCalibrator.estimate(
+              evidence_sources=['lean4_exec'],
+              consistency_passed=False,
+          )
+          assert score3.probability < score.probability, 'Consistency penalty not applied'
+
+          # Test format_score
+          formatted = ConfidenceCalibrator.format_score(score)
+          assert '**' in formatted, f'Formatting failed: {formatted}'
+
+          # Test format_short
+          short = ConfidenceCalibrator.format_short(score)
+          assert '@' in short, f'Short format failed: {short}'
+
+          # Test combine
+          combined = ConfidenceCalibrator.combine([score, score2])
+          assert combined.probability > 0.5, f'Combine failed: {combined.probability}'
+
+          print('ALL CONFIDENCE CALIBRATOR TESTS PASSED')
+          "
