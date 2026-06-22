@@ -11,6 +11,8 @@ FIXED in v0.2.0:
 - Added dedup for identical facts
 - Added expiry cleanup mechanism
 - Fixed _save() edge cases for empty paths
+FIXED in v0.2.1:
+- export_prolog_facts() now includes source in the Prolog fact output
 """
 
 import json
@@ -217,8 +219,10 @@ class KnowledgeGraph:
                     subj = f.subject.replace("'", "\\'")
                     obj = f.object_.replace("'", "\\'")
                     pred = predicate.replace("'", "\\'")
+                    src = f.source.replace("'", "\\'")
                     lines.append(
-                        f"fact('{subj}', '{pred}', '{obj}', {f.confidence:.4f}, {int(f.turn)})."
+                        f"fact('{subj}', '{pred}', '{obj}', {f.confidence:.4f}, "
+                        f"{int(f.turn)}, source='{src}')."
                     )
             return "\n".join(lines)
 
@@ -248,33 +252,5 @@ class KnowledgeGraph:
     def get_pattern(self, name: str) -> Optional[Pattern]:
         return self._patterns.get(name)
 
-    def record_success(self, pattern_name: str) -> None:
-        with self._lock:
-            pat = self._patterns.get(pattern_name)
-            if pat:
-                pat.success_count += 1
-                pat.last_used = time.time()
-                self._save()
-
-    def record_failure(self, pattern_name: str) -> None:
-        with self._lock:
-            pat = self._patterns.get(pattern_name)
-            if pat:
-                pat.failure_count += 1
-                self._save()
-
-    # -- Stats --------------------------------------------------------------
-
-    @property
-    def stats(self) -> dict:
-        with self._lock:
-            total_facts = sum(len(v) for v in self._facts.values())
-            return {
-                "facts": total_facts,
-                "proofs": len(self._proofs),
-                "patterns": len(self._patterns),
-                "turn": self._turn_counter,
-            }
-
-    def __len__(self) -> int:
-        return self._turn_counter
+    def list_patterns(self) -> list[Pattern]:
+        return list(self._patterns.values())
