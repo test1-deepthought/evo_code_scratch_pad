@@ -32,6 +32,15 @@ class EvidenceDimension(Flag):
     SIMULATION = auto()        # Simulation, sampling, or Monte Carlo
     EXPLANATION = auto()       # Explanatory narrative (for expository tasks)
 
+    def __eq__(self, other):
+        """Allow comparison with int (e.g., EvidenceDimension.NONE == 0)."""
+        if isinstance(other, int):
+            return self.value == other
+        return super().__eq__(other)
+
+    def __hash__(self):
+        return hash(self.value)
+
 
 # Legacy tier mapping: EVO tiers map to NOVA dimension sets
 LEGACY_TIER_MAP = {
@@ -117,8 +126,8 @@ def classify_dimensions(description: str) -> EvidenceDimension:
                                   "infer", "syllogism"]):
         dims |= EvidenceDimension.DERIVATION
     
-    # Source keywords
-    if any(kw in text for kw in ["search", "find", "look up", "research",
+    # Source keywords — "look" matches "look it up", "lookup", etc.
+    if any(kw in text for kw in ["search", "find", "look", "research",
                                   "browse", "web", "documentation"]):
         dims |= EvidenceDimension.SOURCE
     
@@ -150,7 +159,7 @@ def recommend_tools(dimensions: EvidenceDimension) -> list[str]:
     """Recommend tools that can satisfy the requested evidence dimensions."""
     scored: list[tuple[int, str]] = []
     for tool, tool_dims in TOOL_EVIDENCE_MAP.items():
-        overlap = bin(int(dimensions & tool_dims)).count("1")
+        overlap = bin((dimensions & tool_dims).value).count("1")
         if overlap > 0:
             scored.append((overlap, tool))
     scored.sort(key=lambda x: -x[0])
