@@ -21,4 +21,4 @@ v0.2.0 — All critical and major issues fixed:
 - CI triggers on push to evo/nova* branches
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
