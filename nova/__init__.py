@@ -16,8 +16,9 @@ v0.2.0 — All critical and major issues fixed:
 - export_prolog_facts() added to KnowledgeGraph
 - Verification plans are now actionable (execute_plan, verify_evidence_profile)
 - Graceful degradation: SKETCH state now reachable
-- Got CI workflow with 7 job suite
-- 6 pytest test files with 30+ test cases
+- GitHub Actions CI workflow with 7 job suite (lint, type-check, test x3 Python versions, syntax-validate, import-check, all-checks-pass)
+- 8 pytest test files with 80+ test cases
+- CI triggers on push to evo/nova* branches
 """
 
 __version__ = "0.2.0"
