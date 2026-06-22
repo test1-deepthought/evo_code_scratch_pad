@@ -1,0 +1,32 @@
+# NOVA requirements (extended from evo-ai)
+# Core dependencies
+openai>=1.0.0
+python-dotenv>=1.0.0
+
+# Web search (optional, requires playwright for full functionality)
+# playwright>=1.40.0
+
+# Visualization
+matplotlib>=3.5.0
+networkx>=2.8
+
+# Data science / symbolic math
+sympy>=1.11
+numpy>=1.24
+scipy>=1.10
+scikit-learn>=1.2
+
+# HuggingFace (for BFS Prover, optional)
+# huggingface-hub>=0.20.0
+
+# Testing (dev dependency)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# CI/lint (dev dependency)
+# ruff>=0.1.0
+# mypy>=1.0.0
+# pylint>=3.0.0
+
+# Optional: evo-ai for full tool support
+# Install from: https://github.com/machinelearning2014/evo-ai
