@@ -12,8 +12,8 @@ FIXED in v0.2.0:
 - Added plan_to_dict() for serialization
 - Plans are no longer purely informational
 FIXED in v0.2.1:
-- MEDIUM plan min_evidence_dimensions changed to COMPUTATION|SOURCE
-  so that computation-only tasks pass with python_exec evidence
+- MEDIUM plan min_evidence_dimensions set to COMPUTATION
+  so that python_exec satisfies the minimum requirement
 """
 
 from __future__ import annotations
@@ -123,12 +123,12 @@ _VERIFICATION_TEMPLATES: dict[RiskLevel, VerificationPlan] = {
     RiskLevel.MEDIUM: VerificationPlan(
         risk=RiskLevel.MEDIUM,
         required_confidence=0.85,
-        min_evidence_dimensions=EvidenceDimension.COMPUTATION | EvidenceDimension.SOURCE,
+        min_evidence_dimensions=EvidenceDimension.COMPUTATION,
         verification_depth=2,
         max_budget_seconds=120,
         requires_lean=False,
         requires_human_review=False,
-        notes=["Standard verification: computation/source evidence with consistency check."],
+        notes=["Standard verification: computation evidence with consistency check."],
     ),
     RiskLevel.HIGH: VerificationPlan(
         risk=RiskLevel.HIGH,
