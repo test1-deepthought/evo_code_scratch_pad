@@ -14,7 +14,10 @@ def temp_lib():
         path = f.name
     lib = ProofLibrary(path)
     yield lib
-    os.unlink(path)
+    try:
+        os.unlink(path)
+    except (FileNotFoundError, PermissionError):
+        pass
 
 
 class TestProofLibrary:
@@ -142,12 +145,15 @@ class TestProofLibrary:
             name="persist_skeleton", strategy="direct",
             theorem_template="", proof_template="",
         ))
-        del temp_lib
+        # Force save by deleting the object
+        old_path = temp_lib._path
+        import gc
+        gc.collect()
 
         lib2 = ProofLibrary(path)
         found = lib2.find_skeleton("persist_skeleton")
         assert found is not None
-        os.unlink(path)
+        # Don't delete here - fixture handles it
 
     def test_get_stats(self, temp_lib):
         """Stats should reflect library contents."""
