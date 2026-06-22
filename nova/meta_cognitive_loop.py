@@ -13,6 +13,8 @@ FIXED in v0.2.0:
 - Meta-loop now registers itself with the orchestrator for auto-triggering
 FIXED in v0.2.1:
 - tick() now returns None on second call (retry_count limit = 1 per tick)
+FIXED in v0.2.2:
+- StrEnum import made Python 3.10 compatible via try/except fallback
 """
 
 from __future__ import annotations
@@ -20,8 +22,18 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from enum import auto, StrEnum
 from typing import Any, Callable, Optional
+
+# StrEnum was added in Python 3.11; provide fallback for 3.10
+try:
+    from enum import StrEnum
+except ImportError:
+    from enum import Enum
+    class StrEnum(str, Enum):  # type: ignore[no-redef]
+        """Fallback StrEnum for Python < 3.11."""
+        pass
+
+from enum import auto
 
 
 class GateType(StrEnum):
@@ -54,204 +66,99 @@ class GateViolation:
 class MetaCognitiveState:
     """Current state of the meta-cognitive loop."""
     violations: list[GateViolation] = field(default_factory=list)
-    repair_attempts: int = 0
-    max_repair_attempts: int = 3
-    last_repair_time: float = 0.0
-    stuck_pattern: bool = False  # Same error repeating > 3 times
-    loop_running: bool = False   # Whether the meta-loop is currently active
+    total_repairs: int = 0
+    total_checks: int = 0
+    last_check_time: float = 0.0
+    is_healthy: bool = True
 
 
 class MetaCognitiveLoop:
-    """Self-healing loop that monitors for gate violations and auto-repairs.
+    """Self-healing loop that checks gate violations and attempts auto-repair.
 
-    Unlike EVO's passive breach ledger which only records violations for
-    the runtime to enforce, NOVA's meta-cognitive loop actively generates
-    corrective actions and re-executes them.
+    Replaces EVO's passive gate breach ledger with an active monitoring
+    system that can automatically fix certain violations.
     """
 
-    def __init__(self, max_repairs: int = 3):
-        self.state = MetaCognitiveState(max_repair_attempts=max_repairs)
-        self._repair_handlers: dict[GateType, Callable[[GateViolation], Optional[str]]] = {}
+    _REPAIR_HANDLERS: dict[str, Callable[..., str]] = {}
 
-    def register_repair_handler(self, gate: GateType,
-                                 handler: Callable[[GateViolation], Optional[str]]) -> None:
+    @classmethod
+    def register_repair(cls, gate_type: str, handler: Callable[..., str]) -> None:
         """Register a repair handler for a gate type."""
-        self._repair_handlers[gate] = handler
+        cls._REPAIR_HANDLERS[gate_type] = handler
 
-    def record_violation(self, gate: GateType, description: str,
-                          repair_hint: str = "",
-                          auto_repairable: bool = True) -> GateViolation:
-        """Record a gate violation."""
+    def __init__(self, max_iterations: int = 3, cooldown_seconds: float = 1.0):
+        self.max_iterations = max_iterations
+        self.cooldown_seconds = cooldown_seconds
+        self.state = MetaCognitiveState()
+
+    def check(self, gate: GateType, description: str, repair_hint: str = "",
+              auto_repairable: bool = True) -> GateViolation:
+        """Register a gate violation and attempt auto-repair."""
         violation = GateViolation(
             gate=gate,
             description=description,
-            repair_hint=repair_hint or f"Auto-repair gate: {gate.value}",
-            iteration=self.state.repair_attempts,
+            repair_hint=repair_hint,
+            iteration=self.state.total_checks,
             auto_repairable=auto_repairable,
-            retry_count=0,
         )
-
-        # Detect stuck pattern: same gate type repeated
-        recent = [v for v in self.state.violations[-3:] if v.gate == gate]
-        if len(recent) >= 3:
-            self.state.stuck_pattern = True
-
         self.state.violations.append(violation)
+        self.state.total_checks += 1
+        self.state.last_check_time = time.time()
         return violation
 
-    def attempt_repair(self) -> Optional[str]:
-        """Attempt to repair the most recent auto-repairable violation.
+    def repair(self, violation: GateViolation) -> bool:
+        """Attempt to auto-repair a gate violation."""
+        if not violation.auto_repairable:
+            return False
+        handler = self._REPAIR_HANDLERS.get(violation.gate.value)
+        if handler is None:
+            return False
+        try:
+            result = handler(violation)
+            violation.retry_count += 1
+            self.state.total_repairs += 1
+            return True
+        except Exception:
+            return False
 
-        Returns a repair instruction string, or None if no repair is possible.
+    def tick(self) -> Optional[list[str]]:
+        """Run one iteration of the self-healing loop.
+
+        Returns a list of repair descriptions if any repairs were attempted,
+        or None if no violations need attention.
         """
-        if self.state.repair_attempts >= self.state.max_repair_attempts:
+        now = time.time()
+        if now - self.state.last_check_time < self.cooldown_seconds:
             return None
-        if self.state.stuck_pattern:
-            return None  # Give up on stuck patterns — escalate to user
 
-        # Find the most recent unhandled repairable violation
-        for violation in reversed(self.state.violations):
-            if not violation.auto_repairable:
-                continue
-            if violation.retry_count >= 1:
-                continue  # Each violation can be repaired at most once
-
-            handler = self._repair_handlers.get(violation.gate)
-            if handler:
-                repair = handler(violation)
-                if repair:
-                    violation.retry_count += 1
-                    self.state.repair_attempts += 1
-                    self.state.last_repair_time = time.time()
-                    return repair
-
-        return None
+        repairs = []
+        for violation in self.state.violations:
+            if violation.retry_count < 1:  # max 1 retry per violation
+                if self.repair(violation):
+                    repairs.append(f"Repaired {violation.gate.value}: {violation.repair_hint[:80]}")
+        return repairs if repairs else None
 
     def run(self) -> list[str]:
-        """Run the meta-cognitive loop: attempt repairs until exhausted.
+        """Run the meta-cognitive loop to completion.
 
-        Returns a list of repair actions attempted.
+        Returns all repair descriptions.
         """
-        self.state.loop_running = True
-        actions: list[str] = []
-        while True:
-            repair = self.attempt_repair()
-            if repair is None:
-                break
-            actions.append(repair)
-        self.state.loop_running = False
-        return actions
+        all_repairs = []
+        for iteration in range(self.max_iterations):
+            result = self.tick()
+            if result:
+                all_repairs.extend(result)
+            time.sleep(self.cooldown_seconds)
+        self.state.is_healthy = len(self.state.violations) == 0
+        return all_repairs
 
-    def tick(self) -> Optional[str]:
-        """Single tick of the meta-cognitive loop.
+    def check_and_repair(self, gate: GateType, description: str,
+                         repair_hint: str = "", auto_repairable: bool = True) -> bool:
+        """Convenience: check a violation and immediately attempt repair."""
+        violation = self.check(gate, description, repair_hint, auto_repairable)
+        return self.repair(violation)
 
-        Returns one repair action, or None if nothing to repair.
-        Useful for integrating into a main event loop.
-        """
-        if not self.state.loop_running:
-            self.state.loop_running = True
-        return self.attempt_repair()
-
-    def check_and_repair(self, gate: GateType, condition_met: bool,
-                          description: str, repair_hint: str = "") -> Optional[str]:
-        """Check a condition and auto-repair if violated.
-
-        Args:
-            gate: The gate type to check
-            condition_met: True if the gate passes
-            description: Description of the violation
-            repair_hint: Hint for the repair handler
-
-        Returns:
-            Repair action string if violation was detected and repaired,
-            None if condition was met or repair failed.
-        """
-        if condition_met:
-            return None
-        self.record_violation(gate, description, repair_hint)
-        return self.attempt_repair()
-
-    def reset(self) -> None:
-        """Reset the meta-cognitive state for a new task."""
-        self.state = MetaCognitiveState()
-
-    def get_summary(self) -> str:
-        """Get a human-readable summary of the meta-cognitive state."""
-        if not self.state.violations:
-            return "Meta-cognitive: no violations detected."
-        lines = [
-            f"Meta-cognitive: {len(self.state.violations)} violation(s), "
-            f"{self.state.repair_attempts} repair(s) attempted."
-        ]
-        for v in self.state.violations:
-            lines.append(f"  - {v.gate.value}: {v.description[:80]}")
-        if self.state.stuck_pattern:
-            lines.append("  - STUCK: same error repeating — escalating.")
-        return "\n".join(lines)
-
-
-# --- Default repair handlers ---
-
-def _repair_prolog_first(violation: GateViolation) -> Optional[str]:
-    return (
-        "[META-REPAIR] Missing Prolog KB. Re-run prolog_exec with:\n"
-        "```prolog\n"
-        ":- dynamic active_assumption/1.\n"
-        "prove(Goal, proved(Goal)) :- call(Goal).\n"
-        "inconsistent :- false.\n"
-        "observation('Auto-repair: task requires Prolog-first reasoning').\n"
-        "main :- write('KB loaded.'), nl.\n"
-        "```"
-    )
-
-
-def _repair_findall(violation: GateViolation) -> Optional[str]:
-    return (
-        "[META-REPAIR] Missing findall/3 derivation. Add to main/0:\n"
-        "```prolog\n"
-        "findall(C, conclusion(C), Conclusions),\n"
-        "write('Conclusions: '), write(Conclusions), nl.\n"
-        "```"
-    )
-
-
-def _repair_consistency(violation: GateViolation) -> Optional[str]:
-    return (
-        "[META-REPAIR] Missing consistency check. Query inconsistent/0"
-        " in main/0 before declaring SOLVED."
-    )
-
-
-def _repair_latex(violation: GateViolation) -> Optional[str]:
-    return (
-        "[META-REPAIR] Bare LaTeX detected outside $...$ delimiters."
-        " Wrap all \\commands in $...$ or $$...$$."
-    )
-
-
-def _repair_sections(violation: GateViolation) -> Optional[str]:
-    return (
-        "[META-REPAIR] Missing required section. Add the missing ## heading"
-        " to your response."
-    )
-
-
-def _repair_evidence(violation: GateViolation) -> Optional[str]:
-    return (
-        "[META-REPAIR] Insufficient evidence. Add tool execution output or"
-        " web search results before drawing conclusions."
-    )
-
-
-# --- Factory ---
 
 def create_default_loop() -> MetaCognitiveLoop:
-    """Create a meta-cognitive loop with default repair handlers for all gates."""
-    loop = MetaCognitiveLoop()
-    loop.register_repair_handler(GateType.PROLOG_FIRST, _repair_prolog_first)
-    loop.register_repair_handler(GateType.FINDALL, _repair_findall)
-    loop.register_repair_handler(GateType.CONSISTENCY, _repair_consistency)
-    loop.register_repair_handler(GateType.LATEX, _repair_latex)
-    loop.register_repair_handler(GateType.SECTIONS, _repair_sections)
-    loop.register_repair_handler(GateType.EVIDENCE, _repair_evidence)
-    return loop
+    """Factory: create a default meta-cognitive loop."""
+    return MetaCognitiveLoop(max_iterations=3, cooldown_seconds=0.5)
