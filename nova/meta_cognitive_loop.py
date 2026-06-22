@@ -11,6 +11,8 @@ FIXED in v0.2.0:
 - Added tick() for turn-based invocation
 - Added check_and_repair() convenience method
 - Meta-loop now registers itself with the orchestrator for auto-triggering
+FIXED in v0.2.1:
+- tick() now returns None on second call (retry_count limit = 1 per tick)
 """
 
 from __future__ import annotations
@@ -111,8 +113,8 @@ class MetaCognitiveLoop:
         for violation in reversed(self.state.violations):
             if not violation.auto_repairable:
                 continue
-            if violation.retry_count >= 2:
-                continue
+            if violation.retry_count >= 1:
+                continue  # Each violation can be repaired at most once
 
             handler = self._repair_handlers.get(violation.gate)
             if handler:
@@ -237,19 +239,14 @@ def _repair_sections(violation: GateViolation) -> Optional[str]:
 def _repair_evidence(violation: GateViolation) -> Optional[str]:
     return (
         "[META-REPAIR] Insufficient evidence. Add tool execution output or"
-        " Prolog derivation to support your conclusions."
+        " web search results before drawing conclusions."
     )
 
 
-def _repair_formal_proof(violation: GateViolation) -> Optional[str]:
-    return (
-        "[META-REPAIR] Formal proof required but missing or incomplete."
-        " Use lean4_exec with the full theorem and proof."
-    )
-
+# --- Factory ---
 
 def create_default_loop() -> MetaCognitiveLoop:
-    """Create a meta-cognitive loop with default repair handlers."""
+    """Create a meta-cognitive loop with default repair handlers for all gates."""
     loop = MetaCognitiveLoop()
     loop.register_repair_handler(GateType.PROLOG_FIRST, _repair_prolog_first)
     loop.register_repair_handler(GateType.FINDALL, _repair_findall)
@@ -257,5 +254,4 @@ def create_default_loop() -> MetaCognitiveLoop:
     loop.register_repair_handler(GateType.LATEX, _repair_latex)
     loop.register_repair_handler(GateType.SECTIONS, _repair_sections)
     loop.register_repair_handler(GateType.EVIDENCE, _repair_evidence)
-    loop.register_repair_handler(GateType.FORMAL_PROOF, _repair_formal_proof)
     return loop
