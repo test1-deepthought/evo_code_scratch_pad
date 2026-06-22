@@ -1,0 +1,23 @@
+# NOVA requirements (extended from evo-ai)
+openai>=1.0.0
+python-dotenv>=1.0.0
+
+# Web search
+playwright>=1.40.0
+
+# Lean 4 integration (via subprocess)
+
+# Prolog integration (via subprocess, SWI-Prolog required)
+
+# Visualization
+matplotlib>=3.5.0
+networkx>=2.8
+
+# Data science / symbolic math
+sympy>=1.11
+numpy>=1.24
+scipy>=1.10
+scikit-learn>=1.2
+
+# HuggingFace (for BFS Prover)
+huggingface-hub>=0.20.0
