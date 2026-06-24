@@ -1,0 +1,85 @@
+--- a/tools/github_public.py
++++ b/tools/github_public.py
+@@ -12,6 +12,7 @@
+ import urllib.parse
+ import urllib.error
+ 
++from mind.network_resilience import resilient_call, urlopen_retry, github_rate_limiter
++from mind.rate_limiter import RetryWithBackoff
++
+ GITHUB_API_BASE = "https://api.github.com"
+ DEFAULT_TIMEOUT = 15
+ 
+@@ -29,6 +30,7 @@
+     def __init__(self, token: str = "", timeout: int = DEFAULT_TIMEOUT):
+         self.token = token
+         self.timeout = timeout
++        self._connection_pool = {}
+         self._login_cache: str | None = None
+ 
+     def query(self, endpoint: str, method: str = "GET", body: dict | None = None) -> dict:
+@@ -44,22 +46,34 @@
+         method = method.upper().strip()
+ 
+         try:
+-            headers = {
+-                "Accept": "application/vnd.github+json",
+-                "User-Agent": "artificial-mind/1.0",
+-                "X-GitHub-Api-Version": "2022-11-28",
+-            }
+-            if self.token:
+-                headers["Authorization"] = f"Bearer {self.token}"
+-
+-            data_bytes = None
+-            if body is not None:
+-                data_bytes = json.dumps(body).encode("utf-8")
+-                headers["Content-Type"] = "application/json"
+-
+-            req = urllib.request.Request(url, data=data_bytes, headers=headers, method=method)
+-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+-                resp_body = resp.read().decode("utf-8")
++            def _do_github_request() -> dict:
++                headers = {
++                    "Accept": "application/vnd.github+json",
++                    "User-Agent": "artificial-mind/1.0",
++                    "X-GitHub-Api-Version": "2022-11-28",
++                }
++                if self.token:
++                    headers["Authorization"] = f"Bearer {self.token}"
++
++                data_bytes = None
++                if body is not None:
++                    data_bytes = json.dumps(body).encode("utf-8")
++                    headers["Content-Type"] = "application/json"
++
++                req = urllib.request.Request(url, data=data_bytes, headers=headers, method=method)
++                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
++                    resp_body = resp.read().decode("utf-8")
++                    rate_remaining = resp.headers.get("X-RateLimit-Remaining", "?")
++                    rate_limit = resp.headers.get("X-RateLimit-Limit", "?")
++
++                if resp_body.strip():
++                    data = json.loads(resp_body)
++                else:
++                    data = {"_status": f"{method} returned no body (HTTP {resp.status})"}
++                return {"data": data, "resp_body": resp_body, "rate_remaining": rate_remaining, "rate_limit": rate_limit, "resp_status": resp.status}
++
++            # Execute with rate limiter + retry
++            github_rate_limiter.acquire()
++            result_data = resilient_call(
++                _do_github_request,
++                endpoint=f"github:{endpoint[:60]}",
++                max_retries=3,
++                base_delay=1.0,
++                circuit_breaker_threshold=10,
++                should_retry=lambda e: (
++                    isinstance(e, urllib.error.HTTPError) and e.code in (429, 500, 502, 503, 504)
++                ) or isinstance(e, (urllib.error.URLError, ConnectionError, TimeoutError)),
++            )
++            data = result_data["data"]
++            resp_body = result_data["resp_body"]
++            rate_remaining = result_data["rate_remaining"]
++            rate_limit = result_data["rate_limit"]
+ 
+             auth_note = " (authenticated)" if self.token else " (unauthenticated)"
+             output = f"GitHub API {method}: {endpoint}\n"
