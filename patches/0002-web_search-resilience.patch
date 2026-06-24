@@ -1,0 +1,66 @@
+--- a/tools/web_search.py
++++ b/tools/web_search.py
+@@ -1,6 +1,7 @@
+ """
+ Web Search - Uses Brave Search plus page extraction via Playwright.
+ Falls back to LangSearch API and DuckDuckGo HTML when Brave scraping fails
++or returns no results.
+ """
+ 
+ import json
+@@ -11,6 +12,7 @@
+ from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+ 
+ from config import LANGSEARCH_API_KEY
++from mind.network_resilience import resilient_call, urlopen_retry
+ from tools.web_browse import WebBrowser
+ 
+ DEFAULT_TIMEOUT = 30
+@@ -409,7 +411,14 @@
+ 
+     def _try_brave(self, query: str, limit: int) -> dict:
+         try:
+-            search_results = self._search_brave(query, limit)
++            search_results = resilient_call(
++                self._search_brave,
++                query, limit,
++                endpoint='brave_search',
++                max_retries=2,
++                base_delay=1.0,
++                circuit_breaker_threshold=5,
++            )
+             if search_results:
+                 return {"success": True, "results": search_results, "source": "Brave", "error": ""}
+             return {"success": False, "results": [], "source": "Brave", "error": "Brave returned no results."}
+@@ -425,7 +434,14 @@
+ 
+     def _try_langsearch(self, query: str, limit: int) -> dict:
+         try:
+-            search_results = self._search_langsearch(query, limit)
++            search_results = resilient_call(
++                self._search_langsearch,
++                query, limit,
++                endpoint='langsearch_api',
++                max_retries=2,
++                base_delay=0.5,
++                circuit_breaker_threshold=5,
++            )
+             if search_results:
+                 return {"success": True, "results": search_results, "source": "LangSearch", "error": ""}
+             return {"success": False, "results": [], "source": "LangSearch", "error": "LangSearch returned no results."}
+@@ -439,7 +455,14 @@
+ 
+     def _try_duckduckgo_html(self, query: str, limit: int) -> dict:
+         try:
+-            search_results = self._search_duckduckgo_html(query, limit)
++            search_results = resilient_call(
++                self._search_duckduckgo_html,
++                query, limit,
++                endpoint='duckduckgo_html',
++                max_retries=2,
++                base_delay=0.5,
++                circuit_breaker_threshold=5,
++            )
+             if search_results:
+                 return {"success": True, "results": search_results, "source": "DuckDuckGo HTML", "error": ""}
+             return {"success": False, "results": [], "source": "DuckDuckGo HTML", "error": "DuckDuckGo HTML returned no results."}
