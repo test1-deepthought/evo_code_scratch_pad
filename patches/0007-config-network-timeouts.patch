@@ -1,0 +1,27 @@
+--- a/config.py
++++ b/config.py
+@@ -14,5 +14,24 @@
+ MIND_AGENT_DEFAULT_TIMEOUT = int(os.getenv("MIND_AGENT_DEFAULT_TIMEOUT", "180"))
+ PYTHON_EXECUTOR_TIMEOUT = int(os.getenv("PYTHON_EXECUTOR_TIMEOUT", "30"))
+ 
++# ---------------------------------------------------------------------------
++# Network resilience configuration
++# ---------------------------------------------------------------------------
++
++# Default timeout (seconds) for HTTP/API calls
++DEFAULT_NETWORK_TIMEOUT = int(os.getenv("EVO_NETWORK_TIMEOUT", "30"))
++
++# Per-service timeouts — more granular control
++GITHUB_API_TIMEOUT = int(os.getenv("EVO_GITHUB_TIMEOUT", "15"))
++BRAVE_SEARCH_TIMEOUT = int(os.getenv("EVO_BRAVE_TIMEOUT", "30"))
++LANGSEARCH_TIMEOUT = int(os.getenv("EVO_LANGSEARCH_TIMEOUT", "15"))
++BROWSE_TIMEOUT = int(os.getenv("EVO_BROWSE_TIMEOUT", "60"))
++
++# Retry configuration
++NETWORK_MAX_RETRIES = int(os.getenv("EVO_MAX_RETRIES", "3"))
++NETWORK_BASE_DELAY = float(os.getenv("EVO_BASE_DELAY", "1.0"))
++NETWORK_MAX_DELAY = float(os.getenv("EVO_MAX_DELAY", "30.0"))
++NETWORK_BACKOFF_MULTIPLIER = float(os.getenv("EVO_BACKOFF_MULT", "2.0"))
++
+ # Web search backends (order matters: tried in sequence)
+ LANGSEARCH_API_KEY = os.getenv("LANGSEARCH_API_KEY", "")
