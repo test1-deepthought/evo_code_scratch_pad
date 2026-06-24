@@ -1,0 +1,64 @@
+--- a/tools/code_scratch_pad.py
++++ b/tools/code_scratch_pad.py
+@@ -25,6 +25,7 @@
+ from urllib.parse import urlparse
+ 
+ from config import DEFAULT_CODE_REPO, DEFAULT_CODE_REPO_OWNER
++from mind.network_resilience import resilient_call
+ from tools.github_public import GitHubPublicAPI
+ 
+ import requests
+@@ -489,11 +490,15 @@
+         owner, name = repo_full.split("/")
+         branch_head = self._branch_head_sha(repo_full)
+         dispatch_started = time.time()
+-        dispatch = self.github.query(
+-            f"/repos/{owner}/{name}/actions/workflows/{DEFAULT_CI_WORKFLOW}/dispatches",
+-            method="POST",
+-            body={"ref": self.state.branch},
++        dispatch = resilient_call(
++            self.github.query,
++            f"/repos/{owner}/{name}/actions/workflows/{DEFAULT_CI_WORKFLOW}/dispatches",
++            method="POST",
++            body={"ref": self.state.branch},
++            endpoint="ci_dispatch",
++            max_retries=3,
++            base_delay=1.0,
++            circuit_breaker_threshold=5,
+         )
+         if not dispatch.get("success"):
+             return {
+@@ -546,10 +551,15 @@
+             return ""
+         owner, name = repo_full.split("/")
+-        result = self.github.query(
+-            f"/repos/{owner}/{name}/git/refs/heads/{self.state.branch}"
++        result = resilient_call(
++            self.github.query,
++            f"/repos/{owner}/{name}/git/refs/heads/{self.state.branch}",
++            endpoint="github_branch_ref",
++            max_retries=2,
++            base_delay=0.5,
+         )
+         if not result.get("success"):
+             return ""
+         return ((result.get("data") or {}).get("object") or {}).get("sha", "")
+ 
+@@ -561,11 +571,15 @@
+             owner, name = repo_full.split("/")
+         except ValueError:
+             return None
+-        runs = self.github.query(
+-            f"/repos/{owner}/{name}/actions/workflows/{DEFAULT_CI_WORKFLOW}/runs"
+-            f"?branch={branch}&event=workflow_dispatch&per_page=10"
++        runs = resilient_call(
++            self.github.query,
++            f"/repos/{owner}/{name}/actions/workflows/{DEFAULT_CI_WORKFLOW}/runs"
++            f"?branch={branch}&event=workflow_dispatch&per_page=10",
++            endpoint="github_ci_runs",
++            max_retries=2,
++            base_delay=0.5,
+         )
+         if not runs.get("success"):
+             return None
+         workflow_runs = (runs.get("data") or {}).get("workflow_runs") or []
