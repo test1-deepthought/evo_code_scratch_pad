@@ -1,0 +1,62 @@
+--- a/tools/web_browse.py
++++ b/tools/web_browse.py
+@@ -5,6 +5,7 @@
+ import asyncio
+ import threading
+ from playwright.async_api import async_playwright, Browser
++from mind.network_resilience import resilient_call, RetryWithBackoff
+ 
+ 
+ def content_indicates_not_found(body_text: str) -> bool:
+@@ -58,10 +59,19 @@
+     async def _browse_async(self, url: str, selector: str | None = None) -> dict:
+         """Internal async browse implementation."""
+         page = None
++        last_error = ""
+         try:
+             await self._ensure_browser()
+             page = await self._browser.new_page()
+-            response = await page.goto(url, timeout=self.timeout, wait_until="domcontentloaded")
++
++            # Retry page navigation up to 2 times on timeout/network errors
++            for attempt in range(3):
++                try:
++                    response = await page.goto(url, timeout=self.timeout, wait_until="domcontentloaded")
++                    break
++                except Exception as nav_err:
++                    last_error = str(nav_err)
++                    if attempt < 2:
++                        await asyncio.sleep(1.0 * (2 ** attempt))
+             await page.wait_for_timeout(2000)
+ 
+             output = f"Web Page: {url}\n\n"
+@@ -116,7 +126,7 @@
+ 
+         except Exception as e:
+             if page:
+-                await page.close()
++                try: await page.close() except Exception: pass
+             return {"success": False, "output": "", "error": f"Browse failed: {e}"}
+ 
+     def browse(self, url: str, selector: str | None = None) -> dict:
+@@ -134,7 +144,14 @@
+         with self._lock:
+             future = asyncio.run_coroutine_threadsafe(
+                 self._browse_async(url, selector), self._loop
+             )
+             try:
+-                return future.result(timeout=self.timeout / 1000 + 10)
++                timeout_seconds = self.timeout / 1000 + 10
++                result = future.result(timeout=timeout_seconds)
++                # Retry once on failure with backoff
++                if not result.get("success") and result.get("error"):
++                    if RetryWithBackoff.is_retryable_error(Exception(result["error"])):
++                        import time
++                        time.sleep(2.0)
++                        future2 = asyncio.run_coroutine_threadsafe(
++                            self._browse_async(url, selector), self._loop
++                        )
++                        result = future2.result(timeout=timeout_seconds)
++                return result
+             except Exception as e:
+                 return {"success": False, "output": "", "error": f"Browse failed: {e}"}
