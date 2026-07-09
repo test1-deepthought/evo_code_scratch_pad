@@ -1,0 +1,28 @@
+{
+  "name": "password-app",
+  "version": "1.0.0",
+  "description": "A TypeScript CLI app for secure password hashing and verification",
+  "main": "dist/index.js",
+  "bin": {
+    "password-app": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "hash": "node dist/index.js hash",
+    "verify": "node dist/index.js verify",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "password",
+    "hashing",
+    "scrypt",
+    "security",
+    "crypto"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
