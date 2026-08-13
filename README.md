@@ -43,8 +43,8 @@ project type and run the appropriate test suite.
 ## Codespaces
 
 This repository is also the clean template for EVO's separately authorized
-Codespaces sandbox. Its dev-container enables the official Docker-in-Docker and
-SSH features. EVO copies the isolated Railway session workspace into a fresh
+Codespaces sandbox. Its dev-container enables the official Docker-in-Docker
+feature and uses GitHub Codespaces' built-in SSH transport. EVO copies the isolated Railway session workspace into a fresh
 user-authorized Codespace, runs the requested command in a hardened nested
 container, and deletes the Codespace afterward.
 

@@ -6,9 +6,6 @@
       "version": "latest",
       "moby": true,
       "dockerDashComposeVersion": "none"
-    },
-    "ghcr.io/devcontainers/features/sshd:1": {
-      "version": "latest"
     }
   },
   "remoteUser": "vscode",
