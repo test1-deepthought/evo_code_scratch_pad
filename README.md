@@ -13,19 +13,20 @@ tool output.
 
 ## How EVO Uses This Repo
 
-EVO operates in two modes, chosen automatically based on task complexity:
+The persistent scratch-pad workflow and the server sandbox are deliberately
+separate:
 
 | Mode | When | Mechanism |
 |------|------|-----------|
-| **inline** | Single-file fixes, small changes | GitHub API writes + CI |
-| **codespace** | Multi-file refactors, debugging | gh codespace + terminal |
+| **scratch pad** | Explicit persistent publication | GitHub API writes + CI |
+| **server sandbox** | Ephemeral CODE verification | User-authorized Codespace + nested Docker |
 
 ### Workflow
 
 1. **K1 Inspect:** EVO reads the target repo/issue via github_public
 2. **K2 Ledger:** EVO maps code facts into a Prolog KB
 3. **K3 Change:** EVO writes files to a feature branch (evo/<slug>-<timestamp>)
-4. **K4 Verify:** EVO runs tests via CI (inline) or pytest/npm test in a Codespace
+4. **K4 Verify:** EVO runs the scratch branch through GitHub Actions CI
 5. **K5 Answer:** EVO creates a PR with the verified changes
 
 ### Branch convention
@@ -41,9 +42,15 @@ project type and run the appropriate test suite.
 
 ## Codespaces
 
-Pre-configured with common dev tools. EVO spins up a Codespace via
-gh codespace create, runs tests interactively, and tears down when done.
-Defaults to the 2-core machine (free tier: ~660 hrs/month).
+This repository is also the clean template for EVO's separately authorized
+Codespaces sandbox. Its dev-container enables the official Docker-in-Docker and
+SSH features. EVO copies the isolated Railway session workspace into a fresh
+user-authorized Codespace, runs the requested command in a hardened nested
+container, and deletes the Codespace afterward.
+
+The nested container uses `--network none` unless network access was explicitly
+authorized. The persistent `code_scratch_pad` tool does not create Codespaces
+and never reuses EVO's server-owned GitHub credential for sandbox execution.
 
 ## Security
 
@@ -53,7 +60,7 @@ Defaults to the 2-core machine (free tier: ~660 hrs/month).
 
 ---
 
-# Operational Learnings: Running Tests & Triggering CI
+# Historical Operational Learnings: Running Tests & Triggering CI
 
 This section captures hands-on experience accumulated across **22 CI workflow runs, 8+
 feature branches, and 4 open PRs** in this repository.
@@ -105,7 +112,11 @@ to main. Dispatching CI on **main** will fail with a file-not-found error.
 **Lesson:** Until the feature branch is merged, dispatch CI only on branches that have
 the `tests/` directory. Once merged, update the main CI to include the fallback chain.
 
-## 3. Inline Mode (GitHub API) Is the Reliable Default
+## 3. Historical Inline/Codespace Comparison
+
+The comparison below describes the retired scratch-pad Codespace mode. Current
+Codespaces execution uses the separate user-authorized nested-container sandbox
+described above.
 
 | Aspect | Inline Mode | Codespace Mode |
 |--------|-------------|----------------|

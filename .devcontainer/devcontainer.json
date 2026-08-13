@@ -1,0 +1,16 @@
+{
+  "name": "EVO Codespaces Sandbox",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {
+      "version": "latest",
+      "moby": true,
+      "dockerDashComposeVersion": "none"
+    },
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    }
+  },
+  "remoteUser": "vscode",
+  "shutdownAction": "stopContainer"
+}
